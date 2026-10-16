@@ -1,0 +1,15 @@
+# Dokploy deployment
+
+Use a Dokploy **Docker Compose** application pointed at `compose.neon.yaml` (Neon) or `compose.yaml` (self-hosted PostgreSQL) in the repository root. Docker Stack mode does not support Compose `build` directives. Configure `app` as the domain target at container port 3000, enable HTTPS, redeploy after adding or changing the Compose domain, and set `AUTH_URL` to that exact HTTPS origin. Never expose the internal worker API through an alternate route. The app service's health check requires both PostgreSQL and Redis.
+
+Set all variables in `.env.example`. Dokploy's environment editor writes a Compose `.env`; this file references the required values explicitly rather than assuming they are injected into each container. Generate each secret independently. In the local PostgreSQL stack, `DATABASE_URL` and `REDIS_URL` are constructed inside Compose from the service credentials. The Neon stack uses `NEON_DATABASE_URL` as `DATABASE_URL`; use an unpooled Neon URL so Prisma migrations run reliably. `ADMIN_EMAIL` and `ADMIN_PASSWORD` are only used by the one-off `seed` profile and should be removed after provisioning if possible.
+
+On each deployment, the one-shot `migrate` container runs `prisma migrate deploy`. The application depends on a successful migration; the worker depends on a healthy application. Named volumes persist local PostgreSQL and Redis. For the local PostgreSQL stack, configure scheduled backups in Dokploy; for Neon, configure Neon backups and restore points. Test restore and monitor storage use. Redis persistence aids recovery but PostgreSQL remains the durable job store.
+
+For crawler security, keep the worker on an isolated Docker network where practical and apply outbound firewall policy on the host or deployment platform that allows DNS and public HTTP(S) only. The built-in proxy denies private, reserved, nonstandard-port and mixed-answer DNS targets, then pins the connection to a validated IP. The worker does not intentionally execute JavaScript, follow redirects, submit forms or bypass access controls. Only approved domains are accepted by the result API. Review target terms before approving crawls.
+
+The Python worker image installs Chromium and is larger than the web image. Allocate at least 2 GB RAM for it. Increase resources only after observed need. The Docker Compose service has a 2 GB memory limit. Monitor `CRAWL4AI_EXTRACTION_FAILED`, lease-expired and robots-denied error classes. Never log secrets or raw scraped HTML.
+
+Current local environment lacks Docker, so the Compose stack must be smoke-tested on a Docker host before a production rollout.
+
+The npm production audit currently reports zero advisories. The full audit still reports development-tool advisories in ESLint/Prisma tooling dependencies; these are not included in the application runner image. Keep the build environment patched and review updates before changing major Prisma versions.

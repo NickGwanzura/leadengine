@@ -1,0 +1,3 @@
+import { db } from '@/lib/db';
+import { apiError,requireMember,sameOrigin,ApiError } from '@/lib/access';
+export async function DELETE(request:Request,{params}:{params:Promise<{id:string}>}){try{sameOrigin(request);const m=await requireMember(true);const {id}=await params;const result=await db.crawlJob.updateMany({where:{id,company:{organizationId:m.organizationId},status:{in:['QUEUED','RUNNING']}},data:{status:'CANCELLED',finishedAt:new Date(),leaseToken:null,leaseExpiresAt:null}});if(!result.count)throw new ApiError(409,'No active job found');await db.auditLog.create({data:{organizationId:m.organizationId,userId:m.userId,action:'CRAWL_CANCELLED',entityId:id,detail:{}}});return Response.json({ok:true});}catch(e){return apiError(e);}}

@@ -1,0 +1,99 @@
+name: spiritus-leados
+x-app-env: &app-env
+  DATABASE_URL: postgresql://${POSTGRES_USER:-leados}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-leados}?schema=public
+  REDIS_URL: redis://:${REDIS_PASSWORD:?Set REDIS_PASSWORD}@redis:6379
+  AUTH_SECRET: ${AUTH_SECRET:?Set AUTH_SECRET}
+  AUTH_URL: ${AUTH_URL:?Set AUTH_URL to your HTTPS domain}
+  AUTH_TRUST_HOST: 'true'
+  INTERNAL_API_SECRET: ${INTERNAL_API_SECRET:?Set INTERNAL_API_SECRET}
+services:
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-leados}
+      POSTGRES_USER: ${POSTGRES_USER:-leados}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: [CMD-SHELL, 'pg_isready -U "$${POSTGRES_USER}" -d "$${POSTGRES_DB}"']
+      interval: 10s
+      timeout: 5s
+      retries: 10
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?Set REDIS_PASSWORD}
+    command: [sh, -c, 'exec redis-server --appendonly yes --requirepass "$${REDIS_PASSWORD}"']
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: [CMD-SHELL, 'REDISCLI_AUTH="$${REDIS_PASSWORD}" redis-cli ping | grep -q PONG']
+      interval: 10s
+      timeout: 5s
+      retries: 10
+  migrate:
+    build:
+      context: .
+      target: tools
+    environment: *app-env
+    command: [npm, run, 'db:migrate']
+    restart: 'no'
+    depends_on:
+      postgres:
+        condition: service_healthy
+  app:
+    build:
+      context: .
+      target: runner
+    restart: unless-stopped
+    environment: *app-env
+    expose:
+      - '3000'
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+    security_opt:
+      - no-new-privileges:true
+  worker:
+    build:
+      context: .
+      dockerfile: worker/Dockerfile
+    restart: unless-stopped
+    init: true
+    shm_size: 512mb
+    environment:
+      APP_INTERNAL_URL: http://app:3000
+      INTERNAL_API_SECRET: ${INTERNAL_API_SECRET:?Set INTERNAL_API_SECRET}
+      REDIS_URL: redis://:${REDIS_PASSWORD:?Set REDIS_PASSWORD}@redis:6379
+    depends_on:
+      app:
+        condition: service_healthy
+    security_opt:
+      - no-new-privileges:true
+    cap_drop: [ALL]
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+          cpus: '1.5'
+  seed:
+    profiles: [tools]
+    build:
+      context: .
+      target: tools
+    environment:
+      <<: *app-env
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
+    command: [npm, run, 'db:seed']
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+volumes:
+  postgres_data:
+  redis_data:

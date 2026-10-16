@@ -1,0 +1,6 @@
+import { db } from '@/lib/db';
+import { z } from 'zod';
+import { stages } from '@/lib/validation';
+import { apiError,requireMember,sameOrigin,ApiError } from '@/lib/access';
+const update=z.object({stage:z.enum(stages).optional(),notes:z.string().max(10000).optional(),nextFollowUp:z.iso.datetime().nullable().optional(),activity:z.string().min(1).max(5000).optional()});
+export async function PATCH(request:Request,{params}:{params:Promise<{id:string}>}){try{sameOrigin(request);const m=await requireMember(true);const {id}=await params;const result=update.safeParse(await request.json());if(!result.success)return Response.json({error:'Invalid company update'},{status:400});const company=await db.prospectCompany.findFirst({where:{id,organizationId:m.organizationId}});if(!company)throw new ApiError(404,'Company not found');const {activity,...data}=result.data;await db.$transaction(async tx=>{await tx.prospectCompany.update({where:{id},data});if(activity||data.stage)await tx.dealActivity.create({data:{companyId:id,userId:m.userId,type:activity?'NOTE':'STAGE_CHANGED',body:activity||`${company.stage} → ${data.stage}`}});await tx.auditLog.create({data:{organizationId:m.organizationId,userId:m.userId,action:'COMPANY_UPDATED',entityId:id,detail:{fields:Object.keys(result.data)}}});});return Response.json({ok:true});}catch(e){return apiError(e);}}

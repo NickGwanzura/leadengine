@@ -1,0 +1,179 @@
+generator client {
+ provider = "prisma-client-js"
+}
+datasource db {
+ provider = "postgresql"
+ url = env("DATABASE_URL")
+}
+model Organization {
+ id String @id @default(cuid())
+ name String
+ members OrganizationMember[]
+ companies ProspectCompany[]
+ imports ImportBatch[]
+ logs AuditLog[]
+ packages ProductPackage[]
+ createdAt DateTime @default(now())
+}
+model User {
+ id String @id @default(cuid())
+ email String @unique
+ name String
+ passwordHash String
+ memberships OrganizationMember[]
+}
+model OrganizationMember {
+ id String @id @default(cuid())
+ organizationId String
+ userId String
+ role String @default("MEMBER")
+ organization Organization @relation(fields:[organizationId],references:[id])
+ user User @relation(fields:[userId],references:[id])
+ @@unique([organizationId,userId])
+}
+model ProspectCompany {
+ id String @id @default(cuid())
+ organizationId String
+ organization Organization @relation(fields:[organizationId],references:[id])
+ name String
+ domain String?
+ website String?
+ industry String @default("Unclassified")
+ country String @default("Zimbabwe")
+ city String @default("")
+ email String?
+ phone String?
+ contactPerson String?
+ contactPosition String?
+ linkedinUrl String?
+ facebookUrl String?
+ sizeEstimate String?
+ notes String @default("")
+ source String @default("Manual")
+ stage String @default("NEW LEAD")
+ priority String @default("Normal")
+ assignedProduct String?
+ dealValue Decimal @default(0) @db.Decimal(14,2)
+ probability Int @default(0)
+ nextFollowUp DateTime?
+ ownerId String?
+ proposalStatus String @default("NONE")
+ importBatchId String?
+ importBatch ImportBatch? @relation(fields:[importBatchId],references:[id])
+ score LeadScore?
+ jobs CrawlJob[]
+ audits WebsiteAudit[]
+ activities DealActivity[]
+ createdAt DateTime @default(now())
+ updatedAt DateTime @updatedAt
+ @@unique([organizationId,domain])
+ @@index([organizationId,stage])
+ @@index([organizationId,nextFollowUp])
+}
+model ImportBatch {
+ id String @id @default(cuid())
+ organizationId String
+ organization Organization @relation(fields:[organizationId],references:[id])
+ createdAt DateTime @default(now())
+ rolledBackAt DateTime?
+ companies ProspectCompany[]
+}
+model CrawlJob {
+ id String @id @default(cuid())
+ companyId String
+ company ProspectCompany @relation(fields:[companyId],references:[id],onDelete:Cascade)
+ url String
+ status String @default("QUEUED")
+ progress Int @default(0)
+ attempt Int @default(0)
+ maxAttempts Int @default(3)
+ approvedBy String
+ approvedAt DateTime @default(now())
+ approvedDomain String
+ error String?
+ availableAt DateTime @default(now())
+ startedAt DateTime?
+ finishedAt DateTime?
+ leaseToken String?
+ leaseExpiresAt DateTime?
+ audit WebsiteAudit?
+ createdAt DateTime @default(now())
+ @@index([status,availableAt])
+ @@index([companyId,status])
+}
+model CrawledPage {
+ id String @id @default(cuid())
+ auditId String
+ audit WebsiteAudit @relation(fields:[auditId],references:[id],onDelete:Cascade)
+ url String
+ title String?
+ statusCode Int
+ metadata Json
+ crawledAt DateTime @default(now())
+ @@unique([auditId,url])
+}
+model WebsiteAudit {
+ id String @id @default(cuid())
+ companyId String
+ company ProspectCompany @relation(fields:[companyId],references:[id],onDelete:Cascade)
+ jobId String @unique
+ job CrawlJob @relation(fields:[jobId],references:[id],onDelete:Cascade)
+ summary String
+ pages CrawledPage[]
+ findings AuditFinding[]
+ createdAt DateTime @default(now())
+ @@index([companyId,createdAt])
+}
+model AuditFinding {
+ id String @id @default(cuid())
+ auditId String
+ audit WebsiteAudit @relation(fields:[auditId],references:[id],onDelete:Cascade)
+ category String
+ classification String
+ observation String
+ recommendation String
+ sourceUrl String
+ evidence Json
+ confidence Float
+}
+model LeadScore {
+ id String @id @default(cuid())
+ companyId String @unique
+ company ProspectCompany @relation(fields:[companyId],references:[id],onDelete:Cascade)
+ total Int @default(0)
+ breakdown Json
+ explanation String
+ override Int?
+ updatedAt DateTime @updatedAt
+}
+model DealActivity {
+ id String @id @default(cuid())
+ companyId String
+ company ProspectCompany @relation(fields:[companyId],references:[id],onDelete:Cascade)
+ userId String
+ type String
+ body String
+ createdAt DateTime @default(now())
+ @@index([companyId,createdAt])
+}
+model AuditLog {
+ id String @id @default(cuid())
+ organizationId String
+ organization Organization @relation(fields:[organizationId],references:[id])
+ userId String
+ action String
+ entityId String
+ detail Json
+ createdAt DateTime @default(now())
+ @@index([organizationId,createdAt])
+}
+model ProductPackage {
+ id String @id @default(cuid())
+ organizationId String
+ organization Organization @relation(fields:[organizationId],references:[id])
+ name String
+ price Decimal @db.Decimal(14,2)
+ fromPrice Boolean @default(false)
+ currency String @default("USD")
+ @@unique([organizationId,name])
+}
