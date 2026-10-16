@@ -3,11 +3,28 @@ HTTP and CONNECT only; denies nonstandard ports, private addresses and oversized
 """
 import asyncio
 import ipaddress
+import logging
 import socket
 from urllib.parse import urlsplit
 
 class UnsafeTarget(ValueError):
     pass
+
+log = logging.getLogger(__name__)
+
+def proxy_response_status(exc):
+    if isinstance(exc, UnsafeTarget):
+        return 403
+    if isinstance(exc, socket.gaierror):
+        return 502
+    if isinstance(exc, asyncio.TimeoutError):
+        return 504
+    return 502
+
+def proxy_error_response(exc):
+    status = proxy_response_status(exc)
+    reason = {403: 'Forbidden', 502: 'Bad Gateway', 504: 'Gateway Timeout'}[status]
+    return f'HTTP/1.1 {status} {reason}\r\nContent-Length: 0\r\nConnection: close\r\n\r\n'.encode()
 
 def is_public(address):
     ip = ipaddress.ip_address(address)
@@ -69,9 +86,33 @@ async def handle(reader, writer):
         for task in pending:
             task.cancel()
         await asyncio.gather(*tasks, return_exceptions=True)
-    except Exception:
+    except UnsafeTarget as exc:
+        # Keep crawler-facing errors generic, but preserve the safe policy reason in
+        # worker logs so Dokploy can distinguish a blocked target from a proxy outage.
+        log.warning('Blocked outbound crawl request: %s', str(exc))
         try:
-            writer.write(b'HTTP/1.1 403 Forbidden\r\nContent-Length: 0\r\nConnection: close\r\n\r\n')
+            writer.write(proxy_error_response(exc))
+            await writer.drain()
+        except ConnectionError:
+            pass
+    except socket.gaierror as exc:
+        log.warning('Outbound crawl proxy could not resolve the target hostname')
+        try:
+            writer.write(proxy_error_response(exc))
+            await writer.drain()
+        except ConnectionError:
+            pass
+    except asyncio.TimeoutError as exc:
+        log.warning('Outbound crawl proxy timed out connecting to the target')
+        try:
+            writer.write(proxy_error_response(exc))
+            await writer.drain()
+        except ConnectionError:
+            pass
+    except Exception as exc:
+        log.warning('Outbound crawl proxy failed: %s', type(exc).__name__)
+        try:
+            writer.write(proxy_error_response(exc))
             await writer.drain()
         except ConnectionError:
             pass

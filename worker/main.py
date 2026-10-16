@@ -26,6 +26,24 @@ async def callback(client, action, job=None, **data):
     r.raise_for_status()
     return r.json()
 
+def failure_code(exc):
+    if isinstance(exc, UnsafeTarget):
+        return str(exc)
+    if isinstance(exc, aiohttp.ClientHttpProxyError):
+        return f'PROXY_HTTP_{exc.status}'
+    if isinstance(exc, aiohttp.ClientProxyConnectionError):
+        return 'PROXY_CONNECTION_FAILED'
+    if isinstance(exc, (asyncio.TimeoutError, aiohttp.ServerTimeoutError)):
+        return 'NETWORK_TIMEOUT'
+    return type(exc).__name__.upper()
+
+def failure_is_retryable(exc):
+    if isinstance(exc, UnsafeTarget):
+        return False
+    if isinstance(exc, aiohttp.ClientHttpProxyError) and exc.status == 403:
+        return False
+    return True
+
 async def robots_allowed(session, url):
     parts = urlsplit(url)
     robots_url = f'{parts.scheme}://{parts.netloc}/robots.txt'
@@ -128,12 +146,12 @@ async def run():
                 await asyncio.wait_for(crawl(client, job), 120)
                 logging.info('Completed job %s', job['id'])
             except Exception as exc:
-                logging.warning('Job operation failed: %s', type(exc).__name__)
+                code = failure_code(exc)
+                logging.warning('Job operation failed: %s', code)
                 if job:
                     try:
                         # Only classified error codes leave the worker; never HTML or secrets.
-                        code = str(exc) if isinstance(exc, UnsafeTarget) else type(exc).__name__.upper()
-                        await callback(client, 'fail', job, error=code[:100], retryable=not isinstance(exc, UnsafeTarget))
+                        await callback(client, 'fail', job, error=code[:100], retryable=failure_is_retryable(exc))
                     except Exception:
                         pass  # Lease expiry safely recovers interrupted jobs; stale leases cannot commit.
                 await asyncio.sleep(3)
