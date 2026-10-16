@@ -79,7 +79,7 @@ export function FollowupPanel({ companies, onOpenCompany }: { companies: Company
         <div className="followup-icon">{task.status === 'COMPLETED' ? <Check size={17}/> : <Clock size={17}/>}</div>
         <div className="followup-main"><strong>{task.title}</strong><p>{task.description || task.company?.name || 'General workspace task'}</p><small>{task.type.replace('_', ' ')}{task.company ? ` · ${task.company.name}` : ''}{task.assignee ? ` · ${task.assignee.name}` : ''}</small></div>
         <time>{localDateTime(task.dueAt)}</time>
-        <span className={`status ${task.status === 'COMPLETED' ? 'green' : task.status === 'OPEN' && isOverdue(task.dueAt) ? 'danger' : ''}`}>{task.status === 'OPEN' && isOverdue(task.dueAt) ? 'Overdue' : task.status.toLowerCase()}</span>
+        <span className={`status ${task.status === 'COMPLETED' ? 'positive' : task.status === 'OPEN' && isOverdue(task.dueAt) ? 'danger' : ''}`}>{task.status === 'OPEN' && isOverdue(task.dueAt) ? 'Overdue' : task.status.toLowerCase()}</span>
         {task.status === 'OPEN' && <div className="followup-actions"><button disabled={busy} title="Mark complete" aria-label={`Complete ${task.title}`} onClick={() => void updateTask(task, { status: 'COMPLETED' })}><CheckSquare size={16}/></button><button disabled={busy} title="Move to tomorrow" aria-label={`Move ${task.title} to tomorrow`} onClick={() => void updateTask(task, { dueAt: new Date(new Date(task.dueAt).getTime() + 86400000).toISOString() })}><RotateCcw size={16}/></button></div>}
       </article>)}
       {!showCompleted && legacy.map(company => <article className={`followup-row ${isOverdue(company.nextFollowUp!) ? 'overdue' : ''}`} key={`legacy-${company.id}`}>
