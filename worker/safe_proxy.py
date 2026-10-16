@@ -37,7 +37,21 @@ async def resolve_public(host, port):
     ips = list(dict.fromkeys(a[4][0] for a in answers))
     if not ips or not all(is_public(ip) for ip in ips):
         raise UnsafeTarget('Non-public target blocked')
-    return ips[0]
+    # Prefer IPv4 because many container hosts do not have working IPv6 egress.
+    # Keep every validated answer so connect_public can fall back safely.
+    return sorted(ips, key=lambda address: ipaddress.ip_address(address).version != 4)
+
+async def connect_public(host, port):
+    last_error = None
+    for ip in await resolve_public(host, port):
+        try:
+            return await asyncio.wait_for(asyncio.open_connection(ip, port), 10)
+        except (OSError, asyncio.TimeoutError) as exc:
+            last_error = exc
+            log.warning('Outbound crawl connection failed over IPv%d; trying the next validated address', ipaddress.ip_address(ip).version)
+    if last_error:
+        raise last_error
+    raise OSError('No public target address available')
 
 async def pipe(reader, writer):
     try:
@@ -66,8 +80,7 @@ async def handle(reader, writer):
             if parsed.scheme != 'http' or parsed.username or parsed.password or not parsed.hostname:
                 raise UnsafeTarget('Invalid HTTP target')
             host, port = parsed.hostname, parsed.port or 80
-        ip = await resolve_public(host, port)
-        remote_reader, upstream = await asyncio.wait_for(asyncio.open_connection(ip, port), 10)
+        remote_reader, upstream = await connect_public(host, port)
         if method == 'CONNECT':
             writer.write(b'HTTP/1.1 200 Connection Established\r\n\r\n')
         else:

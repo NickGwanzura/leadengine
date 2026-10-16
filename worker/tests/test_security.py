@@ -5,7 +5,7 @@ from pathlib import Path
 from unittest.mock import patch
 import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from safe_proxy import is_public, resolve_public, UnsafeTarget, proxy_error_response
+from safe_proxy import is_public, resolve_public, connect_public, UnsafeTarget, proxy_error_response
 
 @pytest.mark.parametrize('ip', ['127.0.0.1','10.0.0.1','169.254.169.254','192.168.1.1','172.16.0.1','::1','::ffff:127.0.0.1','fc00::1','2001:db8::1','2002:7f00:1::'])
 def test_private_blocked(ip):
@@ -23,6 +23,33 @@ def test_mixed_dns_answers_blocked():
         with patch.object(loop, 'getaddrinfo', answers):
             with pytest.raises(UnsafeTarget):
                 await resolve_public('example.test',443)
+    asyncio.run(run())
+
+def test_dns_answers_prefer_ipv4_when_ipv6_is_listed_first():
+    async def run():
+        loop = asyncio.get_running_loop()
+        async def answers(*args, **kwargs):
+            return [
+                (10, 1, 6, '', ('2606:4700:4700::1111', 443, 0, 0)),
+                (2, 1, 6, '', ('1.1.1.1', 443)),
+            ]
+        with patch.object(loop, 'getaddrinfo', answers):
+            assert await resolve_public('example.test', 443) == ['1.1.1.1', '2606:4700:4700::1111']
+    asyncio.run(run())
+
+def test_connection_falls_back_after_ipv6_timeout():
+    async def run():
+        calls = []
+        async def addresses(*args, **kwargs):
+            return ['2606:4700:4700::1111', '1.1.1.1']
+        async def open_connection(ip, port):
+            calls.append(ip)
+            if ip.startswith('2606:'):
+                raise asyncio.TimeoutError()
+            return 'reader', 'writer'
+        with patch('safe_proxy.resolve_public', addresses), patch('safe_proxy.asyncio.open_connection', open_connection):
+            assert await connect_public('example.test', 443) == ('reader', 'writer')
+        assert calls == ['2606:4700:4700::1111', '1.1.1.1']
     asyncio.run(run())
 
 def test_nonstandard_port_blocked():

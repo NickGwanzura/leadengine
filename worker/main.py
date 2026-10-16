@@ -33,6 +33,8 @@ def failure_code(exc):
         return f'PROXY_HTTP_{exc.status}'
     if isinstance(exc, aiohttp.ClientProxyConnectionError):
         return 'PROXY_CONNECTION_FAILED'
+    if isinstance(exc, aiohttp.ClientConnectorError):
+        return 'UPSTREAM_CONNECT_FAILED'
     if isinstance(exc, (asyncio.TimeoutError, aiohttp.ServerTimeoutError)):
         return 'NETWORK_TIMEOUT'
     return type(exc).__name__.upper()
