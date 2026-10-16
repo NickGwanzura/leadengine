@@ -32,7 +32,12 @@ services:
       context: .
       target: runner
     restart: unless-stopped
-    environment: *app-env
+    environment:
+      <<: *app-env
+      AI_PROVIDER: ${AI_PROVIDER:-openai-compatible}
+      AI_API_KEY: ${AI_API_KEY:-}
+      AI_BASE_URL: ${AI_BASE_URL:-https://api.openai.com/v1}
+      AI_MODEL: ${AI_MODEL:-gpt-4.1-mini}
     expose:
       - '3000'
     depends_on:

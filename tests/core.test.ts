@@ -1,6 +1,7 @@
 import { describe,it,expect } from 'vitest';
 import { scoreLead,scoreProspect,limits } from '../lib/scoring';
 import { recommendOpportunities } from '../lib/opportunities';
+import { publicAiStatus, generateChatText } from '../lib/ai-provider';
 import { companySchema,normalizeWebsite } from '../lib/validation';
 import { isPublicAddress } from '../lib/url-security';
 describe('Lead scoring',()=>{
@@ -14,10 +15,44 @@ describe('Lead scoring',()=>{
   expect(score.breakdown.commercial).toBe(0);
   expect(score.explanation).toContain('No deal value was entered');
  });
+ it('counts a scheduled CRM task as a recorded engagement signal',()=>{
+  const score=scoreProspect({industry:'Unclassified',stage:'NEW LEAD',dealValue:'0',followUpTasks:[{dueAt:new Date('2026-10-20T12:00:00Z')} ]},new Date('2026-10-16T12:00:00Z'));
+  expect(score.breakdown.engagement).toBe(1);
+  expect(score.explanation).toContain('upcoming follow-up task');
+ });
  it('does not turn verified observations into sales recommendations',()=>{
   const suggestions=recommendOpportunities({id:'c1',name:'Example',industry:'Other',website:'https://example.com',audits:[{createdAt:new Date(),findings:[{classification:'VERIFIED',category:'Public forms',observation:'A form is present',sourceUrl:'https://example.com'}]}]},[]);
   expect(suggestions).toHaveLength(1);
   expect(suggestions[0].product).toBe('No recommendation yet');
+ });
+});
+describe('AI provider boundary',()=>{
+ it('reports configuration without returning a credential',()=>{
+  const before={provider:process.env.AI_PROVIDER,key:process.env.AI_API_KEY,base:process.env.AI_BASE_URL,model:process.env.AI_MODEL};
+  process.env.AI_PROVIDER='openai-compatible';process.env.AI_API_KEY='test-secret';process.env.AI_BASE_URL='https://api.example.test/v1';process.env.AI_MODEL='test-model';
+  const status=publicAiStatus();
+  expect(status).toMatchObject({configured:true,provider:'openai-compatible',model:'test-model'});
+  expect(JSON.stringify(status)).not.toContain('test-secret');
+  if(before.provider===undefined)delete process.env.AI_PROVIDER;else process.env.AI_PROVIDER=before.provider;
+  if(before.key===undefined)delete process.env.AI_API_KEY;else process.env.AI_API_KEY=before.key;
+  if(before.base===undefined)delete process.env.AI_BASE_URL;else process.env.AI_BASE_URL=before.base;
+  if(before.model===undefined)delete process.env.AI_MODEL;else process.env.AI_MODEL=before.model;
+ });
+ it('posts server-side auth to the configured endpoint and extracts only text',async()=>{
+  const before={provider:process.env.AI_PROVIDER,key:process.env.AI_API_KEY,base:process.env.AI_BASE_URL,model:process.env.AI_MODEL};
+  process.env.AI_PROVIDER='openai-compatible';process.env.AI_API_KEY='test-secret';process.env.AI_BASE_URL='https://api.example.test/v1';process.env.AI_MODEL='test-model';
+  let capturedUrl='';let capturedAuthorization='';let capturedBody:Record<string,unknown>={};
+  const fakeFetch:typeof fetch=async(input,init)=>{capturedUrl=String(input);capturedAuthorization=new Headers(init?.headers).get('authorization')||'';capturedBody=JSON.parse(String(init?.body));return Response.json({choices:[{message:{content:'draft text'}}]});};
+  const result=await generateChatText([{role:'user',content:'test'}],fakeFetch);
+  expect(capturedUrl).toBe('https://api.example.test/v1/chat/completions');
+  expect(capturedAuthorization).toBe('Bearer test-secret');
+  expect(capturedBody.response_format).toEqual({type:'json_object'});
+  expect(capturedBody.store).toBe(false);
+  expect(result.content).toBe('draft text');
+  if(before.provider===undefined)delete process.env.AI_PROVIDER;else process.env.AI_PROVIDER=before.provider;
+  if(before.key===undefined)delete process.env.AI_API_KEY;else process.env.AI_API_KEY=before.key;
+  if(before.base===undefined)delete process.env.AI_BASE_URL;else process.env.AI_BASE_URL=before.base;
+  if(before.model===undefined)delete process.env.AI_MODEL;else process.env.AI_MODEL=before.model;
  });
 });
 describe('CRM validation',()=>{it('rejects missing names',()=>expect(companySchema.safeParse({name:''}).success).toBe(false));it('preserves notes and normalizes domains',()=>{expect(normalizeWebsite('https://WWW.Example.com/a#b')).toEqual({website:'https://www.example.com/a',domain:'example.com'});});it('rejects credentials and non-http URLs',()=>{expect(()=>normalizeWebsite('http://user:pass@example.com')).toThrow();expect(()=>normalizeWebsite('file:///etc/passwd')).toThrow();});});

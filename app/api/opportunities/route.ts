@@ -20,6 +20,7 @@ export async function GET() {
         include: {
           score: true,
           activities: { orderBy: { createdAt: 'desc' }, take: 20, select: { createdAt: true } },
+          followUpTasks: { where: { status: 'OPEN' }, orderBy: { dueAt: 'asc' }, take: 20, select: { dueAt: true } },
           audits: { orderBy: { createdAt: 'desc' }, take: 1, include: { findings: true } },
         },
         orderBy: { updatedAt: 'desc' },
@@ -66,6 +67,7 @@ export async function POST(request: Request) {
       where: { organizationId: member.organizationId, ...(parsed.data.companyIds ? { id: { in: parsed.data.companyIds } } : {}) },
       include: {
         activities: { orderBy: { createdAt: 'desc' }, take: 20 },
+        followUpTasks: { where: { status: 'OPEN' }, orderBy: { dueAt: 'asc' }, take: 20, select: { dueAt: true } },
         audits: { orderBy: { createdAt: 'desc' }, take: 1, include: { findings: true } },
       },
       take: 500,
@@ -104,6 +106,7 @@ export async function PATCH(request: Request) {
       where: { id: companyId, organizationId: member.organizationId },
       include: {
         activities: { orderBy: { createdAt: 'desc' }, take: 20 },
+        followUpTasks: { where: { status: 'OPEN' }, orderBy: { dueAt: 'asc' }, take: 20, select: { dueAt: true } },
         audits: { orderBy: { createdAt: 'desc' }, take: 1, include: { findings: true } },
         score: true,
       },

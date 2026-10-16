@@ -28,6 +28,7 @@ export type ScoringCompany = {
   notes?: string | null;
   nextFollowUp?: Date | string | null;
   activities?: Array<{ createdAt: Date | string }>;
+  followUpTasks?: Array<{ dueAt: Date | string }>;
   audits?: Array<{
     createdAt: Date | string;
     findings: Array<{ classification: string; category: string }>;
@@ -72,7 +73,7 @@ export function scoreProspect(company: ScoringCompany, now = new Date()): ScoreR
     'DISCOVERY COMPLETED': 7, 'PROPOSAL SENT': 8, NEGOTIATION: 9, WON: 10, LOST: 0,
   };
   const followUpAt = company.nextFollowUp ? new Date(company.nextFollowUp) : null;
-  const hasUpcomingFollowUp = Boolean(followUpAt && followUpAt >= now);
+  const hasUpcomingFollowUp = Boolean((followUpAt && followUpAt >= now) || company.followUpTasks?.some(task => new Date(task.dueAt) >= now));
   const recentActivity = (company.activities ?? []).some(activity => now.getTime() - new Date(activity.createdAt).getTime() <= 30 * 86400000);
   const engagement = Math.min(limits.engagement, (stagePoints[company.stage] ?? 0) + (hasUpcomingFollowUp ? 1 : 0) + (recentActivity ? 1 : 0));
 
@@ -83,7 +84,7 @@ export function scoreProspect(company: ScoringCompany, now = new Date()): ScoreR
     `CRM relationship context: ${activityCount} recorded activities${company.notes?.trim() ? ' and saved notes' : ''}.`,
     Number.isFinite(dealValue) && dealValue > 0 ? 'Commercial points use the deal value entered by the team.' : 'No deal value was entered, so commercial value was not inferred.',
     `Contact access is based on fields recorded in CRM${company.email || company.phone || company.contactPerson ? '.' : '; no contact details were entered.'}`,
-    `Engagement uses the recorded pipeline stage${hasUpcomingFollowUp ? ' and an upcoming follow-up' : ''}${recentActivity ? ' and recent recorded activity.' : '.'}`,
+    `Engagement uses the recorded pipeline stage${hasUpcomingFollowUp ? ' and an upcoming follow-up task' : ''}${recentActivity ? ' and recent recorded activity.' : '.'}`,
   ];
   return { ...result, explanation: evidence.join(' ') };
 }
