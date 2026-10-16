@@ -5,6 +5,7 @@
 - Next.js 16 App Router, React 19, TypeScript, Tailwind 4, shadcn-style accessible UI primitives, Auth.js credentials, Zod validation, Prisma/PostgreSQL (Neon or local), Redis wake-ups and a separate Python Crawl4AI worker.
 - Organization-scoped company CRUD (create, read, stage/follow-up/note update), CSV/XLSX import with field mapping and preview, duplicate skipping and guarded rollback.
 - Pipeline drag and drop, task list, overview and report metrics computed from real CRM records.
+- Evidence-based opportunity workspace: deterministic score factors from recorded CRM fields, latest audit findings, interactions and scheduled follow-ups; score explanations; auditable manual overrides; product-fit hypotheses with evidence links and discovery questions. Package prices appear only when configured by the organization.
 - Explicit per-job crawl approval, asynchronous durable PostgreSQL job states, queue limit, retries, leases, cancellation and source-backed audits.
 - The worker fetches only up to three same-host HTML pages, checks robots.txt before each page, does not follow redirects or submit forms, applies rate/size/time limits and uses a DNS-pinning egress proxy. Crawl4AI extracts from fetched HTML in a browser with JavaScript disabled. Findings distinguish observed public evidence from unknown internal systems.
 
@@ -14,7 +15,7 @@ User → authenticated Next.js route → organization-scoped Prisma transaction 
 
 ## Later phases
 
-The full master brief also calls for public search discovery, opportunity recommendations, LLM abstraction, outreach and Resend sending, proposals and PDF output, campaign management, richer scoring, OAuth, contacts and enterprise integrations. These are **not implemented** here. Their navigation is disabled or the UI clearly marks them as future work. No results or contact details are invented.
+The full master brief also calls for public search discovery, LLM-generated research and drafting, outreach and Resend sending, proposals and PDF output, campaign management, OAuth, contacts and enterprise integrations. These are **not implemented** here. Their navigation is disabled or the UI clearly marks them as future work. The current opportunity recommendations are deterministic and do not require or expose an AI key. No results or contact details are invented.
 
 ## Trust boundaries
 
