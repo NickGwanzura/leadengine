@@ -8,6 +8,8 @@
 - Pipeline drag and drop, overview and report metrics computed from real CRM records.
 - Evidence-based opportunity workspace: deterministic score factors from recorded CRM fields, latest audit findings, interactions and scheduled follow-ups; score explanations; auditable manual overrides; product-fit hypotheses with evidence links and discovery questions. Package prices appear only when configured by the organization.
 - Draft-only Outreach Studio for email, WhatsApp, LinkedIn, meeting, audit-summary and proposal-outline formats. The OpenAI-compatible provider is configurable by server environment; keys are not exposed to browsers. CRM/audit facts leave the app only after an explicit per-draft confirmation. Drafts retain supplied facts and model-listed assumptions, can be edited and copied, and are never sent automatically.
+- Public-web Lead Discovery with user-entered filters, source-checked candidate review, and deliberate add-to-CRM actions. Search requires the official OpenAI Responses API and a web-search capable model.
+- Organization-scoped proposal drafts with editable narrative sections, priced line items from configured packages, an auditable save operation, and a private print/PDF view. Proposals remain drafts until reviewed and shared manually.
 - Explicit per-job crawl approval, asynchronous durable PostgreSQL job states, queue limit, retries, leases, cancellation and source-backed audits.
 - The worker fetches only up to three same-host HTML pages, checks robots.txt before each page, does not follow redirects or submit forms, applies rate/size/time limits and uses a DNS-pinning egress proxy. Crawl4AI extracts from fetched HTML in a browser with JavaScript disabled. Findings distinguish observed public evidence from unknown internal systems.
 
@@ -17,7 +19,7 @@ User → authenticated Next.js route → organization-scoped Prisma transaction 
 
 ## Later phases
 
-The remaining master brief includes public search discovery, AI-generated research, Resend delivery and status tracking, full proposal/PDF generation, campaign management, OAuth, contacts and enterprise integrations. These are **not implemented** here. Lead Discovery and Proposals remain marked as future work. The AI draft workspace becomes available only after the administrator configures a compatible provider key in Dokploy. No results or contact details are invented.
+The remaining master brief includes richer AI research, Resend delivery and status tracking, campaign management, OAuth, contacts and enterprise integrations. These are **not implemented** here. The proposal module offers editable drafts and browser Print / Save PDF; it does not send, sign, or track acceptance. Lead Discovery requires the configured OpenAI key and web search access. No results or contact details are invented.
 
 ## Trust boundaries
 

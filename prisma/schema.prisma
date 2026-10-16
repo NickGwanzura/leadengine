@@ -15,6 +15,7 @@ model Organization {
  packages ProductPackage[]
  followUpTasks FollowUpTask[]
  outreachDrafts OutreachDraft[]
+ proposals Proposal[]
  createdAt DateTime @default(now())
 }
 model User {
@@ -26,6 +27,7 @@ model User {
  createdFollowUpTasks FollowUpTask[] @relation("FollowUpTaskCreator")
  assignedFollowUpTasks FollowUpTask[] @relation("FollowUpTaskAssignee")
  createdOutreachDrafts OutreachDraft[]
+ createdProposals Proposal[]
 }
 model OrganizationMember {
  id String @id @default(cuid())
@@ -71,6 +73,7 @@ model ProspectCompany {
  activities DealActivity[]
  followUpTasks FollowUpTask[]
  outreachDrafts OutreachDraft[]
+ proposals Proposal[]
  createdAt DateTime @default(now())
  updatedAt DateTime @updatedAt
  @@unique([organizationId,domain])
@@ -225,4 +228,43 @@ model ProductPackage {
  fromPrice Boolean @default(false)
  currency String @default("USD")
  @@unique([organizationId,name])
+}
+
+model Proposal {
+ id String @id @default(cuid())
+ organizationId String
+ organization Organization @relation(fields:[organizationId],references:[id],onDelete:Cascade)
+ companyId String
+ company ProspectCompany @relation(fields:[companyId],references:[id],onDelete:Cascade)
+ createdBy String
+ creator User @relation(fields:[createdBy],references:[id])
+ title String
+ summary String @default("")
+ objectives String @default("")
+ confirmedChallenges String @default("")
+ scope String @default("")
+ deliverables String @default("")
+ phases String @default("")
+ timeline String @default("")
+ paymentMilestones String @default("")
+ hostingMaintenance String @default("")
+ exclusions String @default("")
+ terms String @default("")
+ status String @default("DRAFT")
+ items ProposalLineItem[]
+ createdAt DateTime @default(now())
+ updatedAt DateTime @updatedAt
+ @@index([organizationId,createdAt])
+ @@index([companyId,createdAt])
+}
+
+model ProposalLineItem {
+ id String @id @default(cuid())
+ proposalId String
+ proposal Proposal @relation(fields:[proposalId],references:[id],onDelete:Cascade)
+ description String
+ quantity Int
+ unitPrice Decimal @db.Decimal(14,2)
+ sortOrder Int
+ @@index([proposalId,sortOrder])
 }
