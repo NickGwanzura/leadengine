@@ -24,7 +24,7 @@ export async function POST(request: Request) {
     }
 
     const { industry, location, keywords, service, size, limit } = parsed.data;
-    const prompt = `Search the public web for up to ${limit} real businesses in ${location} in the ${industry} industry. ${keywords ? `Keywords: ${keywords}.` : ''} ${size ? `Size preference: ${size}.` : ''} ${service ? `Our potential service category: ${service}.` : ''}\nReturn ONLY JSON with a candidates array. Each item must have name, official website, sourceUrl, a short factual description, industry and city. Use sourceUrl exactly as a URL in the web search sources or citations. Include a company only when a source supports its existence and official website. Do not invent websites, contacts, size, software needs or purchase intent. An empty candidates array is valid.`;
+    const prompt = `Search the public web for up to ${limit} real businesses in ${location} in the ${industry} industry. ${keywords ? `Keywords: ${keywords}.` : ''} ${size ? `Size preference: ${size}.` : ''} ${service ? `Our potential service category: ${service}.` : ''}\nReturn ONLY a JSON object in this exact shape: {"candidates":[{"name":"Company name","website":"https://official.example","sourceUrl":"https://source.example","description":"Short sourced fact","industry":"Industry","city":"City"}]}. Keep those exact camelCase keys, especially website and sourceUrl. Use sourceUrl exactly as a URL in the web search sources or citations. Include a company only when a source supports its existence and official website. Do not invent websites, contacts, size, software needs or purchase intent. An empty candidates array is valid.`;
     let response: Response;
     try {
       response = await fetch('https://api.openai.com/v1/responses', {

@@ -55,17 +55,28 @@ export function parseDiscoveryResponse(raw: unknown, limit: number): DiscoveryCa
   const text = messages.join('\n').trim();
   let parsed: unknown;
   try { parsed = JSON.parse(text.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '')); } catch { return []; }
-  const candidates = z.object({ candidates: z.array(candidateSchema).max(30) }).safeParse(parsed);
+  const candidates = z.object({ candidates: z.array(z.unknown()).max(30) }).safeParse(parsed);
   if (!candidates.success) return [];
 
   const domains = new Set<string>();
-  return candidates.data.candidates.filter(candidate => {
-    const source = citationKey(candidate.sourceUrl);
-    const website = new URL(candidate.website);
-    if (!source || !citations.has(source) || !['https:', 'http:'].includes(website.protocol) || website.username || website.password) return false;
+  return candidates.data.candidates.flatMap(rawCandidate => {
+    if (!rawCandidate || typeof rawCandidate !== 'object') return [];
+    const raw = rawCandidate as Record<string, unknown>;
+    const candidate = candidateSchema.safeParse({
+      name: raw.name,
+      website: raw.website ?? raw.officialWebsite ?? raw['official website'],
+      sourceUrl: raw.sourceUrl ?? raw.source_url,
+      description: raw.description ?? '',
+      industry: raw.industry ?? '',
+      city: raw.city ?? '',
+    });
+    if (!candidate.success) return [];
+    const source = citationKey(candidate.data.sourceUrl);
+    const website = new URL(candidate.data.website);
+    if (!source || !citations.has(source) || !['https:', 'http:'].includes(website.protocol) || website.username || website.password) return [];
     const domain = website.hostname.toLowerCase().replace(/^www\./, '');
-    if (domains.has(domain)) return false;
+    if (domains.has(domain)) return [];
     domains.add(domain);
-    return true;
+    return [candidate.data];
   }).slice(0, limit);
 }

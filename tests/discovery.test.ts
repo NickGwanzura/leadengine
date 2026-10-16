@@ -23,7 +23,7 @@ describe('public lead discovery sources', () => {
   it('matches a cited page when OpenAI adds a tracking parameter to the source URL', () => {
     const response = { output: [
       { type: 'web_search_call', action: { sources: [{ url: 'https://www.kilima.online/?utm_source=openai' }] } },
-      { type: 'message', content: [{ type: 'output_text', text: `\`\`\`json\n${JSON.stringify({ candidates: [{ ...candidate('https://www.kilima.online/'), website: 'https://www.kilima.online/' }] })}\n\`\`\`` }] },
+      { type: 'message', content: [{ type: 'output_text', text: `\`\`\`json\n${JSON.stringify({ candidates: [{ ...candidate('https://www.kilima.online/'), website: undefined, 'official website': 'https://www.kilima.online/' }, { name: 'Incomplete result' }] })}\n\`\`\`` }] },
     ] };
     expect(parseDiscoveryResponse(response, 3)).toHaveLength(1);
   });
