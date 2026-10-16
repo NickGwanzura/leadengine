@@ -16,6 +16,9 @@ function citationKey(raw: string) {
     const url = new URL(raw);
     if (!['https:', 'http:'].includes(url.protocol)) return null;
     url.hash = '';
+    for (const key of [...url.searchParams.keys()]) {
+      if (key.toLowerCase().startsWith('utm_')) url.searchParams.delete(key);
+    }
     return url.href.replace(/\/$/, '');
   } catch { return null; }
 }
