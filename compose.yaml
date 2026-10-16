@@ -55,6 +55,8 @@ services:
     depends_on:
       migrate:
         condition: service_completed_successfully
+      seed:
+        condition: service_completed_successfully
       redis:
         condition: service_healthy
     security_opt:
@@ -82,7 +84,6 @@ services:
           memory: 2G
           cpus: '1.5'
   seed:
-    profiles: [tools]
     build:
       context: .
       target: tools
