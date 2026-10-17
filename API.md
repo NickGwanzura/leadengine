@@ -6,7 +6,7 @@ All browser write routes require an Auth.js session, organization membership and
 | --- | --- | --- |
 | `/api/auth/[...nextauth]` | GET/POST | Credentials sign-in and session handling |
 | `/api/companies` | GET/POST | Organization companies; create validated company |
-| `/api/companies/:id` | PATCH | Stage, notes, follow-up or timeline activity |
+| `/api/companies/:id` | PATCH | Edit company details and website, stage, notes, follow-up or timeline activity |
 | `/api/companies/import` | POST | Import mapped JSON rows after client CSV/XLSX preview; maximum 500 rows |
 | `/api/companies/import` | DELETE | Roll back a batch only if its companies have no subsequent changes |
 | `/api/discovery` | POST | Search public web for source-checked candidate companies; review before CRM import |

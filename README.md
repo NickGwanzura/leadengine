@@ -1,6 +1,6 @@
 # Spiritus LeadOS
 
-Evidence-led B2B prospect research for Spiritus Systems. This repository implements secure team sign-in, company CRM and CSV/XLSX import, pipeline and follow-ups, authorised public website crawling, persisted evidence and audit review, source-backed Lead Discovery, outreach drafts and print-ready proposal drafts and administrator-editable package pricing. The remaining modules are explicitly identified in [ARCHITECTURE.md](ARCHITECTURE.md).
+Evidence-led B2B prospect research for Spiritus Systems. This repository implements secure team sign-in, company CRM with editable records and CSV/XLSX import, pipeline and follow-ups, authorised public website crawling, persisted evidence and audit review, source-backed Lead Discovery, outreach drafts and print-ready proposal drafts and administrator-editable package pricing. The remaining modules are explicitly identified in [ARCHITECTURE.md](ARCHITECTURE.md).
 
 ## Dokploy quick start
 
