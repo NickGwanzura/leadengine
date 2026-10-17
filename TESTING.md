@@ -9,7 +9,7 @@ Tests do not prove compliance with any particular website's terms. A human must 
 ## Latest validation (17 October 2026)
 
 - Prisma schema validation, TypeScript type checking, ESLint, and Next.js production build passed.
-- Vitest: 30 passed, including source grounding for Lead Discovery and cent-accurate proposal pricing.
+- Vitest: 31 passed, including source grounding for Lead Discovery, cent-accurate proposal pricing and separation of open pipeline from recorded won deal value.
 - Dokploy production worker: 19 Python tests passed. A live smoke test fetched `https://example.com/` through the worker's egress proxy, extracted with Crawl4AI, and produced one page and seven findings.
 - The test target `dreamboxadvertising.co.zw` resolves to the same public IP as the Dokploy host. Outbound TCP from the worker back to that public IP times out. This is a network hairpin issue for that target, not a general worker or Redis failure.
 - Proposal draft persistence and OpenAI web search should be verified in the deployed UI after the migration and current commit deploy. No outbound proposal delivery or automatic prospect import occurs.
