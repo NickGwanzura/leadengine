@@ -16,6 +16,8 @@ model Organization {
  followUpTasks FollowUpTask[]
  outreachDrafts OutreachDraft[]
  proposals Proposal[]
+ discoveryCandidates DiscoveryCandidate[]
+ discoveryRuns DiscoverySearchRun[]
  createdAt DateTime @default(now())
 }
 model User {
@@ -79,6 +81,34 @@ model ProspectCompany {
  @@unique([organizationId,domain])
  @@index([organizationId,stage])
  @@index([organizationId,nextFollowUp])
+}
+model DiscoveryCandidate {
+ id String @id @default(cuid())
+ organizationId String
+ organization Organization @relation(fields:[organizationId],references:[id],onDelete:Cascade)
+ name String
+ website String
+ sourceUrl String
+ description String
+ industry String
+ city String
+ status String @default("NEW")
+ discoveredAt DateTime @default(now())
+ reviewedAt DateTime?
+ @@unique([organizationId,website])
+ @@index([organizationId,status,discoveredAt])
+}
+model DiscoverySearchRun {
+ id String @id @default(cuid())
+ organizationId String
+ organization Organization @relation(fields:[organizationId],references:[id],onDelete:Cascade)
+ sector String
+ status String @default("RUNNING")
+ resultCount Int @default(0)
+ error String?
+ startedAt DateTime @default(now())
+ finishedAt DateTime?
+ @@index([organizationId,sector,startedAt])
 }
 model ImportBatch {
  id String @id @default(cuid())

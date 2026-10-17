@@ -27,7 +27,7 @@ export type ScoringCompany = {
   contactPosition?: string | null;
   notes?: string | null;
   nextFollowUp?: Date | string | null;
-  activities?: Array<{ createdAt: Date | string }>;
+  activities?: Array<{ createdAt: Date | string; type?: string }>;
   followUpTasks?: Array<{ dueAt: Date | string }>;
   audits?: Array<{
     createdAt: Date | string;
@@ -44,6 +44,10 @@ const fitKeywords: Record<string, string[]> = {
   billboard: ['advertising', 'billboard', 'outdoor media'],
   commerce: ['retail', 'ecommerce', 'e-commerce', 'wholesale', 'store'],
   financial: ['finance', 'financial', 'insurance', 'bank'],
+  industrial: ['industrial', 'manufacturing', 'factory', 'mining'],
+  fmcg: ['fmcg', 'consumer goods', 'food and beverage'],
+  health: ['health', 'medical', 'clinic', 'hospital', 'pharma'],
+  technology: ['technology', 'software', 'tech', 'it services'],
 };
 
 export function scoreProspect(company: ScoringCompany, now = new Date()): ScoreResult {
@@ -57,7 +61,8 @@ export function scoreProspect(company: ScoringCompany, now = new Date()): ScoreR
     .map(finding => finding.category))];
   const opportunity = Math.min(limits.opportunity, potentialIssueCategories.length * 5);
 
-  const activityCount = company.activities?.length ?? 0;
+  const humanActivities = (company.activities ?? []).filter(activity => activity.type !== 'AUDIT_COMPLETED');
+  const activityCount = humanActivities.length;
   const relationship = Math.min(limits.relationship,
     (company.notes?.trim() ? 4 : 0) + Math.min(activityCount * 3, 12) + (company.assignedProduct ? 4 : 0));
 
@@ -74,7 +79,7 @@ export function scoreProspect(company: ScoringCompany, now = new Date()): ScoreR
   };
   const followUpAt = company.nextFollowUp ? new Date(company.nextFollowUp) : null;
   const hasUpcomingFollowUp = Boolean((followUpAt && followUpAt >= now) || company.followUpTasks?.some(task => new Date(task.dueAt) >= now));
-  const recentActivity = (company.activities ?? []).some(activity => now.getTime() - new Date(activity.createdAt).getTime() <= 30 * 86400000);
+  const recentActivity = humanActivities.some(activity => now.getTime() - new Date(activity.createdAt).getTime() <= 30 * 86400000);
   const engagement = Math.min(limits.engagement, (stagePoints[company.stage] ?? 0) + (hasUpcomingFollowUp ? 1 : 0) + (recentActivity ? 1 : 0));
 
   const result = scoreLead({ fit, opportunity, relationship, commercial, accessibility, engagement });

@@ -1,5 +1,28 @@
 from bs4 import BeautifulSoup
 from urllib.parse import urljoin, urlsplit
+import json
+
+def structured_contacts(soup):
+    emails, phones = set(), set()
+    def visit(value):
+        if isinstance(value, list):
+            for entry in value: visit(entry)
+        elif isinstance(value, dict):
+            types = value.get('@type', [])
+            if isinstance(types, str): types = [types]
+            if any(t in ('Organization', 'LocalBusiness', 'ContactPoint', 'Corporation') or str(t).endswith('Business') for t in types):
+                for item in [value.get('email')]:
+                    if isinstance(item, str): emails.add(item.removeprefix('mailto:').strip())
+                for item in [value.get('telephone')]:
+                    if isinstance(item, str): phones.add(item.removeprefix('tel:').strip())
+            for nested in ('@graph', 'contactPoint'):
+                if nested in value: visit(value[nested])
+    for script in soup.select('script[type="application/ld+json"]')[:20]:
+        raw = script.string or script.get_text()
+        if not raw or len(raw) > 100000: continue
+        try: visit(json.loads(raw))
+        except (ValueError, TypeError): continue
+    return emails, phones
 
 def inspect_page(url, html, status, elapsed_ms):
     soup = BeautifulSoup(html, 'html.parser')
@@ -21,8 +44,9 @@ def inspect_page(url, html, status, elapsed_ms):
         target = urljoin(url, a['href']).split('#')[0]
         if urlsplit(target).scheme in ('http', 'https') and urlsplit(target).hostname == urlsplit(url).hostname and target not in links:
             links.append(target)
-    emails = sorted({a['href'][7:].split('?')[0].strip() for a in soup.select('a[href^="mailto:"]') if a.get('href', '')[7:].strip()})[:10]
-    phones = sorted({a['href'][4:].split('?')[0].strip() for a in soup.select('a[href^="tel:"]') if a.get('href', '')[4:].strip()})[:10]
+    structured_emails, structured_phones = structured_contacts(soup)
+    emails = sorted({a['href'][7:].split('?')[0].strip() for a in soup.select('a[href^="mailto:"]') if a.get('href', '')[7:].strip()} | structured_emails)[:10]
+    phones = sorted({a['href'][4:].split('?')[0].strip() for a in soup.select('a[href^="tel:"]') if a.get('href', '')[4:].strip()} | structured_phones)[:10]
     add('Public contact channels', 'VERIFIED' if emails or phones else 'NOT OBSERVABLE', f'{len(emails)} public email link(s) and {len(phones)} public phone link(s) were observed.' if emails or phones else 'No public mailto or tel links were observed on this page.', 'Verify the best contact route before outreach.', {'publicEmails': emails, 'publicPhones': phones})
     metadata = {'publicEmails': emails, 'publicPhones': phones, 'description': description.get('content', '')[:1000] if description else None, 'viewport': viewport.get('content', '') if viewport else None, 'formCount': len(forms), 'h1': [h.get_text(' ', strip=True)[:300] for h in soup.find_all('h1')[:10]], 'elapsedMs': elapsed_ms}
     return {'url': url, 'title': title, 'statusCode': status, 'metadata': metadata}, findings, links
