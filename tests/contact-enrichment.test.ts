@@ -18,4 +18,9 @@ describe('audit enrichment', () => {
     expect(score.breakdown.relationship).toBe(0);
     expect(score.breakdown.engagement).toBe(0);
   });
+
+  it('recognizes a requested target sector in the fit breakdown', () => {
+    const score = scoreProspect({ industry: 'Industrial manufacturing', stage: 'NEW LEAD', dealValue: 0 });
+    expect(score.breakdown.fit).toBe(16);
+  });
 });
