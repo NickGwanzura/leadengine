@@ -34,7 +34,8 @@ export async function POST(request: Request) {
   let payload: { type?: unknown; created_at?: unknown; data?: { email_id?: unknown; tags?: unknown; to?: unknown; bounce?: { type?: unknown } } };
   try { payload = JSON.parse(rawBody); } catch { return Response.json({ error: 'Invalid event payload' }, { status: 400 }); }
   if (typeof payload.type !== 'string' || !payload.type.startsWith('email.')) return Response.json({ received: true });
-  if (!resendEventStatus(payload.type)) return Response.json({ received: true, ignored: true });
+  const eventType = payload.type;
+  if (!resendEventStatus(eventType)) return Response.json({ received: true, ignored: true });
   const providerMessageId = typeof payload.data?.email_id === 'string' ? payload.data.email_id : '';
   if (!providerMessageId) return Response.json({ error: 'Email event is missing its provider email ID' }, { status: 400 });
   const tags = payload.data?.tags;
@@ -43,25 +44,25 @@ export async function POST(request: Request) {
     : tags && typeof tags === 'object' && 'leados_send_id' in tags && typeof tags.leados_send_id === 'string' ? tags.leados_send_id : undefined;
   const sendByProviderId = await db.outreachSend.findUnique({ where: { providerMessageId } });
   const send = sendByProviderId || (taggedSendId ? await db.outreachSend.findUnique({ where: { id: taggedSendId } }) : null);
-  const eventStatus = resendEventStatus(payload.type);
+  const eventStatus = resendEventStatus(eventType);
   const occurredAt = typeof payload.created_at === 'string' && Number.isFinite(Date.parse(payload.created_at)) ? new Date(payload.created_at) : null;
   try {
     await db.$transaction(async tx => {
-      await tx.outreachEmailEvent.create({ data: { providerEventId, providerMessageId, eventType: payload.type as string, occurredAt, sendId: send?.id || null } });
+      await tx.outreachEmailEvent.create({ data: { providerEventId, providerMessageId, eventType, occurredAt, sendId: send?.id || null } });
       if (!send) return;
       const current = await tx.outreachSend.findUniqueOrThrow({ where: { id: send.id }, select: { status: true, providerMessageId: true } });
       if (!current.providerMessageId) await tx.outreachSend.update({ where: { id: send.id }, data: { providerMessageId, sentAt: occurredAt || new Date() } });
       if (eventStatus && shouldReplaceSendStatus(current.status, eventStatus)) {
         await tx.outreachSend.update({ where: { id: send.id }, data: { status: eventStatus, error: null } });
       }
-      if (['email.bounced', 'email.complained', 'email.suppressed'].includes(payload.type as string)) {
+      if (['email.bounced', 'email.complained', 'email.suppressed'].includes(eventType)) {
         await tx.emailSuppression.upsert({
           where: { organizationId_email: { organizationId: send.organizationId, email: send.recipientEmail } },
-          create: { organizationId: send.organizationId, email: send.recipientEmail, reason: payload.type === 'email.bounced' ? 'BOUNCE' : payload.type === 'email.suppressed' ? 'PROVIDER_SUPPRESSION' : 'COMPLAINT', source: 'RESEND_WEBHOOK' },
+          create: { organizationId: send.organizationId, email: send.recipientEmail, reason: eventType === 'email.bounced' ? 'BOUNCE' : eventType === 'email.suppressed' ? 'PROVIDER_SUPPRESSION' : 'COMPLAINT', source: 'RESEND_WEBHOOK' },
           update: {},
         });
       }
-      await tx.auditLog.create({ data: { organizationId: send.organizationId, userId: send.createdBy, action: `OUTBOUND_${payload.type.toUpperCase().replaceAll('.', '_')}`, entityId: send.id, detail: { providerMessageId, occurredAt: occurredAt?.toISOString() || null } } });
+      await tx.auditLog.create({ data: { organizationId: send.organizationId, userId: send.createdBy, action: `OUTBOUND_${eventType.toUpperCase().replaceAll('.', '_')}`, entityId: send.id, detail: { providerMessageId, occurredAt: occurredAt?.toISOString() || null } } });
     });
   } catch (error) {
     if (error && typeof error === 'object' && 'code' in error && error.code === 'P2002') return Response.json({ received: true, duplicate: true });
