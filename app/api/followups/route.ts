@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { db } from '@/lib/db';
 import { apiError, ApiError, requireMember, sameOrigin } from '@/lib/access';
+import { recalculateCompanyScore } from '@/lib/score-service';
 
 const createInput = z.object({
   title: z.string().trim().min(3).max(160),
@@ -53,6 +54,7 @@ export async function POST(request: Request) {
         type: input.type,
         dueAt: new Date(input.dueAt),
       } });
+      if (created.companyId) await recalculateCompanyScore(tx, created.companyId);
       await tx.auditLog.create({ data: { organizationId: member.organizationId, userId: member.userId, action: 'FOLLOWUP_CREATED', entityId: created.id, detail: { companyId: created.companyId, type: created.type } } });
       return created;
     });

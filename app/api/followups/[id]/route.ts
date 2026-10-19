@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { db } from '@/lib/db';
 import { apiError, ApiError, requireMember, sameOrigin } from '@/lib/access';
+import { recalculateCompanyScore } from '@/lib/score-service';
 
 const updateInput = z.object({
   title: z.string().trim().min(3).max(160).optional(),
@@ -29,6 +30,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
           ...(status ? { status, completedAt: status === 'COMPLETED' ? new Date() : null } : {}),
         },
       });
+      if (updated.companyId) await recalculateCompanyScore(tx, updated.companyId);
       await tx.auditLog.create({ data: {
         organizationId: member.organizationId,
         userId: member.userId,

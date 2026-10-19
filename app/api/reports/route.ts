@@ -1,6 +1,8 @@
 import { db } from '@/lib/db';
 import { apiError, ApiError, requireMember } from '@/lib/access';
 import { summarizePipeline } from '@/lib/reporting';
+import { scoringInclude } from '@/lib/score-service';
+import { scoreProspect } from '@/lib/scoring';
 
 export async function GET(request: Request) {
   try {
@@ -10,7 +12,7 @@ export async function GET(request: Request) {
     const since = new Date(Date.now() - days * 86400000);
     const now = new Date();
     const org = member.organizationId;
-    const [stageGroups, sourceGroups, industryGroups, newProspects, auditCount, recentAudits, dueTasks, draftProposals, scores] = await Promise.all([
+    const [stageGroups, sourceGroups, industryGroups, newProspects, auditCount, recentAudits, dueTasks, draftProposals, scores, unscoredCompanies] = await Promise.all([
       db.prospectCompany.groupBy({ by: ['stage'], where: { organizationId: org }, _count: { _all: true }, _sum: { dealValue: true } }),
       db.prospectCompany.groupBy({ by: ['source'], where: { organizationId: org }, _count: { _all: true }, orderBy: { _count: { source: 'desc' } }, take: 8 }),
       db.prospectCompany.groupBy({ by: ['industry'], where: { organizationId: org }, _count: { _all: true }, orderBy: { _count: { industry: 'desc' } }, take: 8 }),
@@ -20,12 +22,13 @@ export async function GET(request: Request) {
       db.followUpTask.count({ where: { organizationId: org, status: 'OPEN', dueAt: { lte: now } } }),
       db.proposal.count({ where: { organizationId: org, status: 'DRAFT' } }),
       db.leadScore.findMany({ where: { company: { organizationId: org } }, select: { total: true, override: true } }),
+      db.prospectCompany.findMany({ where: { organizationId: org, score: { is: null } }, include: scoringInclude }),
     ]);
     const stages = stageGroups.map(row => ({ stage: row.stage, count: row._count._all, value: Number(row._sum.dealValue || 0) }));
     const totalProspects = stages.reduce((sum, row) => sum + row.count, 0);
     return Response.json({
       days,
-      totals: { totalProspects, newProspects, highPriority: scores.filter(score => (score.override ?? score.total) >= 80).length, auditCount, recentAudits, dueTasks, draftProposals, ...summarizePipeline(stages) },
+      totals: { totalProspects, newProspects, highPriority: scores.filter(score => (score.override ?? score.total) >= 80).length + unscoredCompanies.filter(company => scoreProspect(company).total >= 80).length, auditCount, recentAudits, dueTasks, draftProposals, ...summarizePipeline(stages) },
       stages,
       sources: sourceGroups.map(row => ({ label: row.source || 'Unspecified', count: row._count._all })),
       industries: industryGroups.map(row => ({ label: row.industry || 'Unclassified', count: row._count._all })),

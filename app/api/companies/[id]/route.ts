@@ -2,6 +2,7 @@ import { db } from '@/lib/db';
 import { z } from 'zod';
 import { normalizeWebsite, stages } from '@/lib/validation';
 import { apiError,requireMember,sameOrigin,ApiError } from '@/lib/access';
+import { recalculateCompanyScore } from '@/lib/score-service';
 const update=z.object({
  name:z.string().trim().min(2).max(200).optional(),
  website:z.union([z.url().max(2048),z.literal('')]).optional(),
@@ -36,6 +37,7 @@ export async function PATCH(request:Request,{params}:{params:Promise<{id:string}
   await db.$transaction(async tx=>{
    await tx.prospectCompany.update({where:{id},data:{...fields,...websiteFields,email:fields.email===''?null:fields.email}});
    if(activity||fields.stage)await tx.dealActivity.create({data:{companyId:id,userId:member.userId,type:activity?'NOTE':'STAGE_CHANGED',body:activity||`${company.stage} → ${fields.stage}`}});
+   await recalculateCompanyScore(tx,id);
    await tx.auditLog.create({data:{organizationId:member.organizationId,userId:member.userId,action:'COMPANY_UPDATED',entityId:id,detail:{fields:Object.keys(result.data)}}});
   });
   return Response.json({ok:true});

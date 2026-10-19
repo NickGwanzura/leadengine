@@ -20,7 +20,11 @@ export async function GET(request: Request) {
     const companyId = new URL(request.url).searchParams.get('companyId') || undefined;
     const drafts = await db.outreachDraft.findMany({
       where: { organizationId: member.organizationId, ...(companyId ? { companyId } : {}) },
-      include: { company: { select: { id: true, name: true } }, creator: { select: { name: true } } },
+      include: {
+        company: { select: { id: true, name: true, email: true } },
+        creator: { select: { name: true } },
+        sends: { select: { id: true, recipientEmail: true, status: true, createdAt: true, sentAt: true, error: true }, orderBy: { createdAt: 'desc' }, take: 5 },
+      },
       orderBy: { updatedAt: 'desc' },
       take: 100,
     });
@@ -73,6 +77,7 @@ export async function POST(request: Request) {
           facts: facts as object, assumptions: parsedDraft.assumptions,
           provider: generated.provider, model: generated.model,
         },
+        include: { company: { select: { id: true, name: true, email: true } }, sends: { select: { id: true, recipientEmail: true, status: true, createdAt: true, sentAt: true, error: true } } },
       });
       await tx.auditLog.create({ data: { organizationId: member.organizationId, userId: member.userId, action: 'OUTREACH_DRAFT_GENERATED', entityId: created.id, detail: { companyId, channel, model: generated.model } } });
       return created;

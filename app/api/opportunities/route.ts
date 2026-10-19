@@ -19,7 +19,7 @@ export async function GET() {
         where: { organizationId: member.organizationId },
         include: {
           score: true,
-          activities: { orderBy: { createdAt: 'desc' }, take: 20, select: { createdAt: true } },
+          activities: { orderBy: { createdAt: 'desc' }, take: 20, select: { createdAt: true, type: true } },
           followUpTasks: { where: { status: 'OPEN' }, orderBy: { dueAt: 'asc' }, take: 20, select: { dueAt: true } },
           audits: { orderBy: { createdAt: 'desc' }, take: 1, include: { findings: true } },
         },
@@ -30,26 +30,29 @@ export async function GET() {
     ]);
     const configuredPackages = packages.map(pkg => ({ name: pkg.name, price: pkg.price.toString(), fromPrice: pkg.fromPrice, currency: pkg.currency }));
     return Response.json({
-      items: companies.map(company => ({
-        id: company.id,
-        name: company.name,
-        industry: company.industry,
-        website: company.website,
-        stage: company.stage,
-        dealValue: company.dealValue.toString(),
-        sizeEstimate: company.sizeEstimate,
-        assignedProduct: company.assignedProduct,
-        score: company.score ? {
-          total: company.score.total,
-          override: company.score.override,
-          effectiveTotal: company.score.override ?? company.score.total,
-          category: categoryFor(company.score.override ?? company.score.total),
-          breakdown: company.score.breakdown,
-          explanation: company.score.explanation,
-          updatedAt: company.score.updatedAt,
-        } : null,
-        recommendations: recommendOpportunities(company, configuredPackages),
-      })),
+      items: companies.map(company => {
+        const score = company.score ?? { ...scoreProspect(company), override: null, updatedAt: company.updatedAt };
+        return {
+          id: company.id,
+          name: company.name,
+          industry: company.industry,
+          website: company.website,
+          stage: company.stage,
+          dealValue: company.dealValue.toString(),
+          sizeEstimate: company.sizeEstimate,
+          assignedProduct: company.assignedProduct,
+          score: {
+            total: score.total,
+            override: score.override,
+            effectiveTotal: score.override ?? score.total,
+            category: categoryFor(score.override ?? score.total),
+            breakdown: score.breakdown,
+            explanation: score.explanation,
+            updatedAt: score.updatedAt,
+          },
+          recommendations: recommendOpportunities(company, configuredPackages),
+        };
+      }),
       packages: configuredPackages,
     });
   } catch (error) {
@@ -63,33 +66,35 @@ export async function POST(request: Request) {
     const member = await requireMember(true);
     const parsed = recalculateInput.safeParse(await request.json().catch(() => ({})));
     if (!parsed.success) throw new ApiError(400, 'Invalid scoring request');
-    const companies = await db.prospectCompany.findMany({
-      where: { organizationId: member.organizationId, ...(parsed.data.companyIds ? { id: { in: parsed.data.companyIds } } : {}) },
-      include: {
-        activities: { orderBy: { createdAt: 'desc' }, take: 20 },
-        followUpTasks: { where: { status: 'OPEN' }, orderBy: { dueAt: 'asc' }, take: 20, select: { dueAt: true } },
-        audits: { orderBy: { createdAt: 'desc' }, take: 1, include: { findings: true } },
-      },
-      take: 500,
-    });
-    const scores = companies.map(company => ({ company, result: scoreProspect(company) }));
-    await db.$transaction([
-      ...scores.map(({ company, result }) => db.leadScore.upsert({
+    let scored = 0;
+    let cursor: string | undefined;
+    while (true) {
+      const companies = await db.prospectCompany.findMany({
+        where: { organizationId: member.organizationId, ...(parsed.data.companyIds ? { id: { in: parsed.data.companyIds } } : {}) },
+        include: {
+          activities: { orderBy: { createdAt: 'desc' }, take: 20 },
+          followUpTasks: { where: { status: 'OPEN' }, orderBy: { dueAt: 'asc' }, take: 20, select: { dueAt: true } },
+          audits: { orderBy: { createdAt: 'desc' }, take: 1, include: { findings: true } },
+        },
+        orderBy: { id: 'asc' },
+        take: 500,
+        ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
+      });
+      if (!companies.length) break;
+      const scores = companies.map(company => ({ company, result: scoreProspect(company) }));
+      await db.$transaction(scores.map(({ company, result }) => db.leadScore.upsert({
         where: { companyId: company.id },
         create: { companyId: company.id, total: result.total, breakdown: result.breakdown, explanation: result.explanation },
         update: { total: result.total, breakdown: result.breakdown, explanation: result.explanation },
-      })),
-      db.auditLog.create({
-        data: {
-          organizationId: member.organizationId,
-          userId: member.userId,
-          action: 'LEAD_SCORES_RECALCULATED',
-          entityId: member.organizationId,
-          detail: { count: scores.length },
-        },
-      }),
-    ]);
-    return Response.json({ scored: scores.length });
+      })));
+      scored += scores.length;
+      cursor = companies[companies.length - 1].id;
+      if (parsed.data.companyIds || companies.length < 500) break;
+    }
+    await db.auditLog.create({
+      data: { organizationId: member.organizationId, userId: member.userId, action: 'LEAD_SCORES_RECALCULATED', entityId: member.organizationId, detail: { count: scored } },
+    });
+    return Response.json({ scored });
   } catch (error) {
     return apiError(error);
   }
@@ -117,7 +122,7 @@ export async function PATCH(request: Request) {
       await tx.leadScore.upsert({
         where: { companyId },
         create: { companyId, total: calculated.total, breakdown: calculated.breakdown, explanation: calculated.explanation, override },
-        update: { override },
+        update: { total: calculated.total, breakdown: calculated.breakdown, explanation: calculated.explanation, override },
       });
       await tx.auditLog.create({
         data: {

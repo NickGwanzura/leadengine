@@ -56,6 +56,10 @@ services:
       AI_BASE_URL: ${AI_BASE_URL:-https://api.openai.com/v1}
       AI_MODEL: ${AI_MODEL:-gpt-4.1-mini}
       AI_DISCOVERY_MODEL: ${AI_DISCOVERY_MODEL:-}
+      RESEND_API_KEY: ${RESEND_API_KEY:-}
+      RESEND_FROM: ${RESEND_FROM:-}
+      EMAIL_POSTAL_ADDRESS: ${EMAIL_POSTAL_ADDRESS:-}
+      RESEND_WEBHOOK_SECRET: ${RESEND_WEBHOOK_SECRET:-}
     expose:
       - '3000'
     depends_on:

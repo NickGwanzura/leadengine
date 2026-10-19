@@ -19,6 +19,10 @@ All browser write routes require an Auth.js session, organization membership and
 | `/api/crawls` | POST | Authorize and queue a public website crawl for a company |
 | `/api/crawls/:id` | DELETE | Cancel an active job |
 | `/api/internal/jobs` | POST | Worker `claim`, `progress`, `complete`, `fail` protocol |
+| `/api/outreach/status` | GET | Report sender, postal-address and webhook configuration without exposing secrets |
+| `/api/outreach/sends` | GET/POST | List send history or send one explicitly confirmed saved email draft |
+| `/api/webhooks/resend` | POST | Verify signed Resend events and update send status and suppression records |
+| `/api/outreach/unsubscribe` | GET/POST | Confirm unsubscribe or process a one-click opt-out using an opaque token |
 | `/api/health` | GET | PostgreSQL and Redis readiness |
 
 The company import request is `{ "rows": [{ "name": "...", "website": "https://...", "industry": "..." }] }`; response includes `batchId`, `created`, `duplicates`. Crawl request is `{ "companyId": "...", "authorized": true }`. The worker uses a lease token from `claim`; stale or cancelled leases cannot complete.

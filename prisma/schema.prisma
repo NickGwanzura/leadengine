@@ -18,6 +18,8 @@ model Organization {
  proposals Proposal[]
  discoveryCandidates DiscoveryCandidate[]
  discoveryRuns DiscoverySearchRun[]
+ outreachSends OutreachSend[]
+ emailSuppressions EmailSuppression[]
  createdAt DateTime @default(now())
 }
 model User {
@@ -29,6 +31,7 @@ model User {
  createdFollowUpTasks FollowUpTask[] @relation("FollowUpTaskCreator")
  assignedFollowUpTasks FollowUpTask[] @relation("FollowUpTaskAssignee")
  createdOutreachDrafts OutreachDraft[]
+ outreachSends OutreachSend[]
  createdProposals Proposal[]
 }
 model OrganizationMember {
@@ -75,6 +78,7 @@ model ProspectCompany {
  activities DealActivity[]
  followUpTasks FollowUpTask[]
  outreachDrafts OutreachDraft[]
+ outreachSends OutreachSend[]
  proposals Proposal[]
  createdAt DateTime @default(now())
  updatedAt DateTime @updatedAt
@@ -237,6 +241,66 @@ model OutreachDraft {
  updatedAt DateTime @updatedAt
  @@index([organizationId,createdAt])
  @@index([companyId,createdAt])
+ sends OutreachSend[]
+}
+model OutreachSend {
+ id String @id @default(cuid())
+ organizationId String
+ organization Organization @relation(fields:[organizationId],references:[id],onDelete:Cascade)
+ draftId String
+ draft OutreachDraft @relation(fields:[draftId],references:[id],onDelete:Cascade)
+ companyId String
+ company ProspectCompany @relation(fields:[companyId],references:[id],onDelete:Cascade)
+ createdBy String
+ creator User @relation(fields:[createdBy],references:[id])
+ recipientEmail String
+ senderEmail String
+ subject String
+ body String
+ provider String @default("resend")
+ providerMessageId String? @unique
+ requestKey String
+ status String @default("SENDING")
+ error String?
+ sentAt DateTime?
+ createdAt DateTime @default(now())
+ updatedAt DateTime @updatedAt
+ events OutreachEmailEvent[]
+ unsubscribeToken OutreachUnsubscribeToken?
+ @@unique([organizationId,requestKey])
+ @@index([organizationId,createdAt])
+ @@index([draftId,createdAt])
+ @@index([recipientEmail,status])
+}
+model OutreachEmailEvent {
+ id String @id @default(cuid())
+ providerEventId String @unique
+ providerMessageId String
+ eventType String
+ occurredAt DateTime?
+ sendId String?
+ send OutreachSend? @relation(fields:[sendId],references:[id],onDelete:SetNull)
+ receivedAt DateTime @default(now())
+ @@index([providerMessageId,receivedAt])
+}
+model EmailSuppression {
+ id String @id @default(cuid())
+ organizationId String
+ organization Organization @relation(fields:[organizationId],references:[id],onDelete:Cascade)
+ email String
+ reason String
+ source String
+ createdAt DateTime @default(now())
+ @@unique([organizationId,email])
+ @@index([organizationId,createdAt])
+}
+model OutreachUnsubscribeToken {
+ id String @id @default(cuid())
+ sendId String @unique
+ send OutreachSend @relation(fields:[sendId],references:[id],onDelete:Cascade)
+ tokenHash String @unique
+ usedAt DateTime?
+ createdAt DateTime @default(now())
 }
 model AuditLog {
  id String @id @default(cuid())
