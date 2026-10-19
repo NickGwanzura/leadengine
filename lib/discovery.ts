@@ -10,6 +10,8 @@ const candidateSchema = z.object({
 });
 
 export type DiscoveryCandidate = z.infer<typeof candidateSchema>;
+const responseSchema = z.object({ output: z.array(z.unknown()) });
+const candidatesSchema = z.object({ candidates: z.array(z.unknown()).max(30) });
 
 function citationKey(raw: string) {
   try {
@@ -23,13 +25,34 @@ function citationKey(raw: string) {
   } catch { return null; }
 }
 
-export function parseDiscoveryResponse(raw: unknown, limit: number): DiscoveryCandidate[] {
-  const output = z.object({ output: z.array(z.unknown()) }).safeParse(raw);
-  if (!output.success) return [];
-  const citations = new Set<string>();
+function parseCandidateEnvelope(raw: unknown) {
+  const output = responseSchema.safeParse(raw);
+  if (!output.success) return null;
   const messages: string[] = [];
-
   for (const item of output.data.output) {
+    if (!item || typeof item !== 'object') continue;
+    const entry = item as Record<string, unknown>;
+    if (entry.type !== 'message' || !Array.isArray(entry.content)) continue;
+    for (const part of entry.content) {
+      if (part && typeof part === 'object' && 'text' in part && typeof part.text === 'string') messages.push(part.text);
+    }
+  }
+  let parsed: unknown;
+  try { parsed = JSON.parse(messages.join('\n').trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '')); } catch { return null; }
+  const candidates = candidatesSchema.safeParse(parsed);
+  return candidates.success ? { output: output.data.output, candidates: candidates.data.candidates } : null;
+}
+
+export function hasDiscoveryResponseEnvelope(raw: unknown) {
+  return parseCandidateEnvelope(raw) !== null;
+}
+
+export function parseDiscoveryResponse(raw: unknown, limit: number): DiscoveryCandidate[] {
+  const envelope = parseCandidateEnvelope(raw);
+  if (!envelope) return [];
+  const citations = new Set<string>();
+
+  for (const item of envelope.output) {
     if (!item || typeof item !== 'object') continue;
     const entry = item as Record<string, unknown>;
     if (entry.type === 'web_search_call') {
@@ -43,7 +66,6 @@ export function parseDiscoveryResponse(raw: unknown, limit: number): DiscoveryCa
       for (const part of entry.content) {
         if (!part || typeof part !== 'object') continue;
         const content = part as { text?: string; annotations?: Array<{ type?: string; url?: string }> };
-        if (typeof content.text === 'string') messages.push(content.text);
         for (const annotation of content.annotations || []) {
           const key = annotation.type === 'url_citation' && annotation.url ? citationKey(annotation.url) : null;
           if (key) citations.add(key);
@@ -52,14 +74,8 @@ export function parseDiscoveryResponse(raw: unknown, limit: number): DiscoveryCa
     }
   }
 
-  const text = messages.join('\n').trim();
-  let parsed: unknown;
-  try { parsed = JSON.parse(text.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '')); } catch { return []; }
-  const candidates = z.object({ candidates: z.array(z.unknown()).max(30) }).safeParse(parsed);
-  if (!candidates.success) return [];
-
   const domains = new Set<string>();
-  return candidates.data.candidates.flatMap(rawCandidate => {
+  return envelope.candidates.flatMap(rawCandidate => {
     if (!rawCandidate || typeof rawCandidate !== 'object') return [];
     const raw = rawCandidate as Record<string, unknown>;
     const candidate = candidateSchema.safeParse({

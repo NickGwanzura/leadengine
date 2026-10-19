@@ -1,6 +1,6 @@
 import { ApiError } from '@/lib/access';
 import { aiConfiguration } from '@/lib/ai-provider';
-import { parseDiscoveryResponse } from '@/lib/discovery';
+import { hasDiscoveryResponseEnvelope, parseDiscoveryResponse } from '@/lib/discovery';
 
 export type DiscoveryQuery = { industry: string; location: string; keywords?: string; service?: string; size?: string; limit: number; excludedDomains?: string[] };
 
@@ -13,10 +13,14 @@ export async function searchPublicBusinesses({ industry, location, keywords = ''
     response = await fetch('https://api.openai.com/v1/responses', {
       method: 'POST', cache: 'no-store', signal: AbortSignal.timeout(60_000),
       headers: { authorization: `Bearer ${config.apiKey}`, 'content-type': 'application/json' },
-      body: JSON.stringify({ model: process.env.AI_DISCOVERY_MODEL?.trim() || config.model, tools: [{ type: 'web_search' }], tool_choice: 'required', include: ['web_search_call.action.sources'], input: prompt, max_output_tokens: 2000, store: false }),
+      body: JSON.stringify({ model: process.env.AI_DISCOVERY_MODEL?.trim() || config.model, tools: [{ type: 'web_search' }], tool_choice: 'required', include: ['web_search_call.action.sources'], input: prompt, max_output_tokens: 3000, store: false }),
     });
   } catch { throw new ApiError(502, 'Web search could not be reached'); }
   if (response.status === 429) throw new ApiError(429, 'Web search rate limit reached');
   if (!response.ok) throw new ApiError(502, 'Web search request failed. Check the configured model and API access');
-  return parseDiscoveryResponse(await response.json().catch(() => null), limit);
+  const payload = await response.json().catch(() => null);
+  const status = payload && typeof payload === 'object' && 'status' in payload ? payload.status : null;
+  if (status && status !== 'completed') throw new ApiError(502, 'Web search did not complete; the scheduler will retry');
+  if (!hasDiscoveryResponseEnvelope(payload)) throw new ApiError(502, 'Web search returned an unreadable candidate list; the scheduler will retry');
+  return parseDiscoveryResponse(payload, limit);
 }
