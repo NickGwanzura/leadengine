@@ -23,12 +23,20 @@ async function runSector(organizationId: string, sector: typeof sectors[number],
   try {
     const [existing, previouslyReviewed] = await Promise.all([
       db.prospectCompany.findMany({ where: { organizationId }, select: { name: true, domain: true } }),
-      db.discoveryCandidate.findMany({ where: { organizationId }, select: { name: true, website: true }, orderBy: { discoveredAt: 'desc' }, take: 100 }),
+      db.discoveryCandidate.findMany({ where: { organizationId }, select: { name: true, website: true, sourceUrl: true }, orderBy: { discoveredAt: 'desc' }, take: 100 }),
     ]);
     const knownNames = new Set([...existing.map(company => company.name), ...previouslyReviewed.map(candidate => candidate.name)].map(name => name.trim().toLowerCase()));
-    const knownDomains = new Set([...existing.map(company => company.domain).filter((domain): domain is string => Boolean(domain)), ...previouslyReviewed.map(candidate => new URL(candidate.website).hostname.toLowerCase().replace(/^www\./, ''))]);
+    const reviewedBusinessDomains = previouslyReviewed.flatMap(candidate => {
+      try {
+        const website = new URL(candidate.website);
+        const source = new URL(candidate.sourceUrl);
+        if (website.hostname === source.hostname && website.pathname.split('/').filter(Boolean).length > 1) return [];
+        return [website.hostname.toLowerCase().replace(/^www\./, '')];
+      } catch { return []; }
+    });
+    const knownDomains = new Set([...existing.map(company => company.domain).filter((domain): domain is string => Boolean(domain)), ...reviewedBusinessDomains]);
     const excludedDomains = [...knownDomains].slice(0, 80);
-    const candidates = await searchPublicBusinesses({ industry: sector, location: 'Zimbabwe', limit: 6, excludedDomains });
+    const candidates = await searchPublicBusinesses({ industry: sector, location: 'Zimbabwe', limit: 10, excludedDomains });
     const filtered = candidates.filter(candidate => {
       const name = candidate.name.trim().toLowerCase();
       const domain = new URL(candidate.website).hostname.toLowerCase().replace(/^www\./, '');
