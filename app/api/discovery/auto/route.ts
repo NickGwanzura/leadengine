@@ -46,13 +46,15 @@ async function runSector(organizationId: string, sector: typeof sectors[number],
 export async function GET() {
   try {
     const member = await requireMember();
-    const [candidates, sectorRuns] = await Promise.all([
+    const [candidates, recentCandidates, reviewedCandidates, sectorRuns] = await Promise.all([
       db.discoveryCandidate.findMany({ where: { organizationId: member.organizationId, status: 'NEW' }, orderBy: { discoveredAt: 'desc' }, take: 100 }),
+      db.discoveryCandidate.findMany({ where: { organizationId: member.organizationId }, orderBy: { discoveredAt: 'desc' }, take: 60 }),
+      db.discoveryCandidate.findMany({ where: { organizationId: member.organizationId, status: { in: ['ADDED', 'DISMISSED'] } }, orderBy: { reviewedAt: 'desc' }, take: 60 }),
       Promise.all(sectors.map(sector => db.discoverySearchRun.findFirst({ where: { organizationId: member.organizationId, sector }, orderBy: { startedAt: 'desc' } }))),
     ]);
     const runs = sectorRuns.filter(run => run !== null).sort((a, b) => b.startedAt.getTime() - a.startedAt.getTime());
     const config = aiConfiguration();
-    return Response.json({ candidates, runs, sectors, searchConfigured: config.configured && config.baseUrl?.origin === 'https://api.openai.com' });
+    return Response.json({ candidates, recentCandidates, reviewedCandidates, runs, sectors, searchConfigured: config.configured && config.baseUrl?.origin === 'https://api.openai.com' }, { headers: { 'cache-control': 'private, no-store' } });
   } catch (error) { return apiError(error); }
 }
 

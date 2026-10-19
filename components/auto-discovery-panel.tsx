@@ -1,10 +1,14 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { ArrowUpRight, Loader2, RefreshCw } from 'lucide-react';
+import { ArrowUpRight, Clock3, Loader2, RefreshCw, SearchX } from 'lucide-react';
 import { Button } from './ui/button';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/card';
+import { Badge } from './ui/badge';
+import { Alert, AlertDescription, AlertTitle } from './ui/alert';
+import { Input } from './ui/input';
 
-type Candidate = { id: string; name: string; website: string; sourceUrl: string; description: string; industry: string; city: string; discoveredAt: string };
+type Candidate = { id: string; name: string; website: string; sourceUrl: string; description: string; industry: string; city: string; status: string; discoveredAt: string; reviewedAt: string | null };
 type Run = { id: string; sector: string; status: string; resultCount: number; startedAt: string; error: string | null };
 const sectors = ['Industrial', 'FMCG', 'Logistics', 'Health', 'Tech', 'Real Estate'];
 function suggestedWebsite(candidate: Candidate) {
@@ -19,6 +23,8 @@ function websiteDomain(raw: string) {
 
 export function AutoDiscoveryPanel({ existingDomains, existingNames, onAdded }: { existingDomains: string[]; existingNames: string[]; onAdded: () => Promise<void> }) {
   const [candidates, setCandidates] = useState<Candidate[]>([]);
+  const [recentCandidates, setRecentCandidates] = useState<Candidate[]>([]);
+  const [reviewedCandidates, setReviewedCandidates] = useState<Candidate[]>([]);
   const [runs, setRuns] = useState<Run[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchConfigured, setSearchConfigured] = useState<boolean | null>(null);
@@ -31,10 +37,10 @@ export function AutoDiscoveryPanel({ existingDomains, existingNames, onAdded }: 
   const [reviewed, setReviewed] = useState<string[]>([]);
   const load = useCallback(async () => {
     try {
-      const response = await fetch('/api/discovery/auto');
+      const response = await fetch('/api/discovery/auto', { cache: 'no-store' });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || 'Could not load discovery queue');
-      setCandidates(data.candidates); setRuns(data.runs); setSearchConfigured(data.searchConfigured); setLoadError('');
+      setCandidates(data.candidates); setRecentCandidates(data.recentCandidates || []); setReviewedCandidates(data.reviewedCandidates || []); setRuns(data.runs); setSearchConfigured(data.searchConfigured); setLoadError('');
     } catch (cause) { setLoadError((cause as Error).message); }
     finally { setLoading(false); }
   }, []);
@@ -77,22 +83,29 @@ export function AutoDiscoveryPanel({ existingDomains, existingNames, onAdded }: 
     } catch (cause) { setError((cause as Error).message); }
     finally { setSaving(''); }
   }
-  return <section className="panel auto-discovery"><div className="panel-heading"><div><h2>Automatic sector discovery</h2><p>Daily public-web searches across Industrial, FMCG, Logistics, Health, Tech and Real Estate in Zimbabwe. Sourced candidates wait here for review; none are added or crawled automatically.</p></div></div>
-    {searchConfigured === false && <p className="field-error" role="alert">Automatic discovery needs AI_API_KEY and the official OpenAI API endpoint in the app environment.</p>}
-    <div className="auto-discovery-controls"><Button variant="outline" disabled={Boolean(searching)} onClick={() => void findAll()}>{searching ? <Loader2 size={15} className="spin"/> : <RefreshCw size={15}/>} {searching ? `Searching ${searching}…` : 'Find leads across all six sectors'}</Button><span>{loading ? 'Loading queue…' : `${candidates.length} awaiting review`}</span></div>
-    {error && <p className="field-error" role="alert">{error}</p>}
-    {loadError && <p className="field-error" role="alert">{loadError}</p>}
-    {notice && <p className="auto-discovery-status" role="status">{notice}</p>}
-    {!loading && runs.length === 0 && <p className="auto-discovery-status">No automatic search has reached this workspace yet. Check the discovery-scheduler container in Dokploy.</p>}
-    {runs.length > 0 && Date.now() - new Date(runs[0].startedAt).getTime() > 26 * 3600000 && <p className="field-error" role="alert">The scheduler has not reported a search in over 26 hours. Check the discovery-scheduler container in Dokploy.</p>}
-    {runs.length > 0 && <p className="auto-discovery-status">Last attempt {new Date(runs[0].startedAt).toLocaleString()}. Latest searches: {sectors.map(sector => { const run = runs.find(item => item.sector === sector); return `${sector} ${run ? `${run.status.toLowerCase()} (${run.resultCount})` : 'pending'}`; }).join(' · ')}</p>}
-    {sectors.flatMap(sector => { const run = runs.find(item => item.sector === sector); return run?.status === 'FAILED' ? [<p className="field-error" role="alert" key={run.id}>{sector}: {run.error || 'Search failed'} · {new Date(run.startedAt).toLocaleString()}</p>] : []; })}
-    {!loading && candidates.length === 0 && <div className="empty"><RefreshCw size={24}/><h3>No leads awaiting review</h3><p>Check the latest search counts above or start a fresh search. Leads added to the CRM or dismissed no longer appear here.</p></div>}
-    <div className="discovery-results">{candidates.map(candidate => {
+  const lastRun = runs[0];
+  return <div className="grid gap-5 pb-6">
+    <Card><CardHeader className="gap-3 sm:flex-row sm:items-center sm:justify-between"><div className="grid gap-2"><CardTitle>Automatic lead sourcing</CardTitle><CardDescription>Six Zimbabwe sectors searched daily. Every sourced business stays available in recent results after review.</CardDescription></div><Button variant="outline" disabled={Boolean(searching) || searchConfigured === false} onClick={() => void findAll()}>{searching ? <Loader2 size={15} className="spin"/> : <RefreshCw size={15}/>} {searching ? `Searching ${searching}…` : 'Run all six searches'}</Button></CardHeader>
+      <CardContent className="grid gap-4 pt-0">
+        <div className="grid gap-3 sm:grid-cols-3"><div className="rounded-lg border border-[var(--line)] p-4"><p className="text-xs text-[var(--muted)]">Awaiting review</p><strong className="mt-2 block text-2xl">{loading ? '—' : candidates.length}</strong></div><div className="rounded-lg border border-[var(--line)] p-4"><p className="text-xs text-[var(--muted)]">Recent sourced leads</p><strong className="mt-2 block text-2xl">{loading ? '—' : recentCandidates.length}</strong><p className="text-xs text-[var(--muted)]">Latest 60</p></div><div className="rounded-lg border border-[var(--line)] p-4"><p className="text-xs text-[var(--muted)]">Last search attempt</p><strong className="mt-2 block text-sm">{lastRun ? new Date(lastRun.startedAt).toLocaleString() : 'No run recorded'}</strong></div></div>
+        {searchConfigured === false && <Alert variant="destructive"><AlertTitle>Search is not configured</AlertTitle><AlertDescription>Set AI_API_KEY and the official OpenAI API endpoint in the app container, then redeploy.</AlertDescription></Alert>}
+        {error && <Alert variant="destructive"><AlertTitle>Search or review failed</AlertTitle><AlertDescription>{error}</AlertDescription></Alert>}
+        {loadError && <Alert variant="destructive"><AlertTitle>Could not load sourcing results</AlertTitle><AlertDescription>{loadError}</AlertDescription></Alert>}
+        {notice && <Alert><AlertDescription>{notice}</AlertDescription></Alert>}
+        {!loading && runs.length === 0 && <Alert variant="destructive"><AlertTitle>No scheduled search has reached this workspace</AlertTitle><AlertDescription>Check that the discovery-scheduler container is running in Dokploy and that the Spiritus workspace has been seeded.</AlertDescription></Alert>}
+        {lastRun && Date.now() - new Date(lastRun.startedAt).getTime() > 26 * 3600000 && <Alert variant="destructive"><AlertTitle>Scheduler is overdue</AlertTitle><AlertDescription>No search attempt has been recorded in over 26 hours. Check the discovery-scheduler container logs.</AlertDescription></Alert>}
+        {runs.some(run => run.status === 'RUNNING' && Date.now() - new Date(run.startedAt).getTime() > 2 * 60000) && <Alert variant="destructive"><AlertTitle>A search appears stalled</AlertTitle><AlertDescription>A sector has been running for over two minutes. Check the scheduler logs, then use Run all six searches to retry.</AlertDescription></Alert>}
+      </CardContent></Card>
+
+    <Card><CardHeader><CardTitle>Sector search results</CardTitle><CardDescription>Newest recorded attempt for each sector. A completed search with zero means it found no new verified companies.</CardDescription></CardHeader><CardContent className="grid gap-3 pt-0 sm:grid-cols-2 xl:grid-cols-3">{sectors.map(sector => { const run = runs.find(item => item.sector === sector); return <div key={sector} className="rounded-lg border border-[var(--line)] p-4"><div className="flex items-center justify-between gap-2"><strong className="text-sm">{sector}</strong><Badge variant={!run ? 'outline' : run.status === 'FAILED' ? 'destructive' : run.status === 'COMPLETED' ? 'secondary' : 'outline'}>{!run ? 'No run' : run.status.toLowerCase()}</Badge></div><p className="mt-3 text-sm">{run ? `${run.resultCount} new lead${run.resultCount === 1 ? '' : 's'}` : 'No result yet'}</p><p className="mt-1 flex items-center gap-1 text-xs text-[var(--muted)]"><Clock3 size={12}/>{run ? new Date(run.startedAt).toLocaleString() : 'Waiting for scheduler'}</p>{run?.status === 'FAILED' && <p className="mt-2 text-xs text-red-700">{run.error || 'Search failed'}</p>}</div>; })}</CardContent></Card>
+
+    <Card><CardHeader><CardTitle>Leads awaiting review</CardTitle><CardDescription>{candidates.length} sourced companies. Verify each website before adding it to the CRM.</CardDescription></CardHeader>{!loading && candidates.length === 0 ? <CardContent className="flex items-start gap-3 pt-0 text-sm text-[var(--muted)]"><SearchX size={19}/><p>No leads currently await review. Check the sector results and recent sourced leads below.</p></CardContent> : <CardContent className="grid gap-3 pt-0 md:grid-cols-2">{candidates.map(candidate => {
       const website = websites[candidate.id] ?? suggestedWebsite(candidate);
       const domain = websiteDomain(website);
       const inCrm = existingNames.some(name => name.trim().toLowerCase() === candidate.name.trim().toLowerCase()) || Boolean(domain && existingDomains.includes(domain));
-      return <article className="discovery-card" key={candidate.id}><div className="discovery-card-heading"><div><h3>{candidate.name}</h3><p>{candidate.industry} · {candidate.city || 'Zimbabwe'} · {new Date(candidate.discoveredAt).toLocaleDateString()}</p></div></div><p>{candidate.description}</p><div className="discovery-card-links"><a href={candidate.website} target="_blank" rel="noreferrer">Suggested page <ArrowUpRight size={13}/></a><a href={candidate.sourceUrl} target="_blank" rel="noreferrer">Source <ArrowUpRight size={13}/></a></div><label className="discovery-website-label">Verified business website<input type="url" value={website} onChange={event => { setWebsites(previous => ({ ...previous, [candidate.id]: event.target.value })); setReviewed(previous => previous.filter(id => id !== candidate.id)); }} placeholder="Leave blank if only a directory listing is known"/></label><label className="discovery-confirm"><input type="checkbox" checked={reviewed.includes(candidate.id)} onChange={event => setReviewed(previous => event.target.checked ? [...previous, candidate.id] : previous.filter(id => id !== candidate.id))}/><span>I reviewed this company and website.</span></label><div className="auto-discovery-actions"><Button variant="outline" disabled={Boolean(saving) || inCrm || !reviewed.includes(candidate.id) || domain === null} onClick={() => void review(candidate, 'ADDED', website)}>{inCrm ? 'Already in CRM' : saving === candidate.id ? 'Saving…' : 'Add to CRM'}</Button><button className="text-button" disabled={Boolean(saving)} onClick={() => void review(candidate, 'DISMISSED')}>Dismiss</button></div></article>;
-    })}</div>
-  </section>;
+      return <div className="rounded-lg border border-[var(--line)] p-4" key={candidate.id}><div className="flex items-start justify-between gap-2"><div><h3 className="text-sm font-semibold">{candidate.name}</h3><p className="mt-1 text-xs text-[var(--muted)]">{candidate.industry} · {candidate.city || 'Zimbabwe'} · {new Date(candidate.discoveredAt).toLocaleDateString()}</p></div><Badge variant="outline">New</Badge></div><p className="mt-3 text-sm text-[var(--muted)]">{candidate.description}</p><div className="mt-3 flex gap-4 text-sm text-[var(--accent)]"><a className="inline-flex items-center gap-1" href={candidate.website} target="_blank" rel="noreferrer">Suggested page <ArrowUpRight size={13}/></a><a className="inline-flex items-center gap-1" href={candidate.sourceUrl} target="_blank" rel="noreferrer">Source <ArrowUpRight size={13}/></a></div><label className="mt-4 grid gap-2 text-xs text-[var(--muted)]">Verified business website<Input type="url" value={website} onChange={event => { setWebsites(previous => ({ ...previous, [candidate.id]: event.target.value })); setReviewed(previous => previous.filter(id => id !== candidate.id)); }} placeholder="Leave blank if only a directory listing is known"/></label><label className="mt-3 flex items-start gap-2 text-xs text-[var(--muted)]"><input type="checkbox" checked={reviewed.includes(candidate.id)} onChange={event => setReviewed(previous => event.target.checked ? [...previous, candidate.id] : previous.filter(id => id !== candidate.id))}/><span>I reviewed this company and website.</span></label><div className="mt-4 flex items-center gap-3"><Button variant="outline" disabled={Boolean(saving) || inCrm || !reviewed.includes(candidate.id) || domain === null} onClick={() => void review(candidate, 'ADDED', website)}>{inCrm ? 'Already in CRM' : saving === candidate.id ? 'Saving…' : 'Add to CRM'}</Button><Button variant="ghost" disabled={Boolean(saving)} onClick={() => void review(candidate, 'DISMISSED')}>Dismiss</Button></div></div>;
+    })}</CardContent>}</Card>
+
+    <Card><CardHeader><CardTitle>Recent sourced leads</CardTitle><CardDescription>Previously reviewed results remain visible here with their original public sources.</CardDescription></CardHeader><CardContent className="grid gap-2 pt-0">{reviewedCandidates.length ? reviewedCandidates.map(candidate => <div key={candidate.id} className="flex flex-wrap items-center gap-3 rounded-lg border border-[var(--line)] px-4 py-3"><div className="min-w-0 flex-1"><strong className="text-sm">{candidate.name}</strong><p className="text-xs text-[var(--muted)]">{candidate.industry} · {candidate.city || 'Zimbabwe'} · Found {new Date(candidate.discoveredAt).toLocaleDateString()}</p></div><Badge variant={candidate.status === 'ADDED' ? 'secondary' : 'outline'}>{candidate.status === 'ADDED' ? 'Added to CRM' : 'Dismissed'}</Badge><a className="inline-flex items-center gap-1 text-xs text-[var(--accent)]" href={candidate.sourceUrl} target="_blank" rel="noreferrer">Source <ArrowUpRight size={12}/></a></div>) : <p className="text-sm text-[var(--muted)]">No reviewed leads yet. New candidates appear above after a search.</p>}</CardContent></Card>
+  </div>;
 }
