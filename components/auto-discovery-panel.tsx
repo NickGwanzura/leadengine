@@ -25,6 +25,7 @@ export function AutoDiscoveryPanel({ existingDomains, existingNames, onAdded }: 
   const [searching, setSearching] = useState('');
   const [saving, setSaving] = useState('');
   const [error, setError] = useState('');
+  const [loadError, setLoadError] = useState('');
   const [notice, setNotice] = useState('');
   const [websites, setWebsites] = useState<Record<string, string>>({});
   const [reviewed, setReviewed] = useState<string[]>([]);
@@ -33,11 +34,17 @@ export function AutoDiscoveryPanel({ existingDomains, existingNames, onAdded }: 
       const response = await fetch('/api/discovery/auto');
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || 'Could not load discovery queue');
-      setCandidates(data.candidates); setRuns(data.runs); setSearchConfigured(data.searchConfigured); setError('');
-    } catch (cause) { setError((cause as Error).message); }
+      setCandidates(data.candidates); setRuns(data.runs); setSearchConfigured(data.searchConfigured); setLoadError('');
+    } catch (cause) { setLoadError((cause as Error).message); }
     finally { setLoading(false); }
   }, []);
-  useEffect(() => { const timeout = setTimeout(() => void load(), 0); return () => clearTimeout(timeout); }, [load]);
+  useEffect(() => {
+    const refresh = () => { if (document.visibilityState === 'visible') void load(); };
+    const timeout = setTimeout(refresh, 0);
+    const interval = setInterval(refresh, 60000);
+    document.addEventListener('visibilitychange', refresh);
+    return () => { clearTimeout(timeout); clearInterval(interval); document.removeEventListener('visibilitychange', refresh); };
+  }, [load]);
 
   async function findAll() {
     setSearching('Starting'); setError(''); setNotice('');
@@ -62,16 +69,11 @@ export function AutoDiscoveryPanel({ existingDomains, existingNames, onAdded }: 
   async function review(candidate: Candidate, status: 'DISMISSED' | 'ADDED', website = '') {
     setSaving(candidate.id); setError('');
     try {
-      if (status === 'ADDED') {
-        const response = await fetch('/api/companies', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name: candidate.name, website, industry: candidate.industry, city: candidate.city, country: 'Zimbabwe', source: 'Automatic public web discovery', notes: `Research source: ${candidate.sourceUrl}` }) });
-        const data = await response.json();
-        if (!response.ok) throw new Error(data.error || 'Could not add company');
-        await onAdded();
-      }
-      const response = await fetch('/api/discovery/auto', { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ id: candidate.id, status }) });
+      const response = await fetch('/api/discovery/auto', { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ id: candidate.id, status, ...(status === 'ADDED' ? { website } : {}) }) });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || 'Could not update review queue');
       await load();
+      if (status === 'ADDED') await onAdded();
     } catch (cause) { setError((cause as Error).message); }
     finally { setSaving(''); }
   }
@@ -79,8 +81,10 @@ export function AutoDiscoveryPanel({ existingDomains, existingNames, onAdded }: 
     {searchConfigured === false && <p className="field-error" role="alert">Automatic discovery needs AI_API_KEY and the official OpenAI API endpoint in the app environment.</p>}
     <div className="auto-discovery-controls"><Button variant="outline" disabled={Boolean(searching)} onClick={() => void findAll()}>{searching ? <Loader2 size={15} className="spin"/> : <RefreshCw size={15}/>} {searching ? `Searching ${searching}…` : 'Find leads across all six sectors'}</Button><span>{loading ? 'Loading queue…' : `${candidates.length} awaiting review`}</span></div>
     {error && <p className="field-error" role="alert">{error}</p>}
+    {loadError && <p className="field-error" role="alert">{loadError}</p>}
     {notice && <p className="auto-discovery-status" role="status">{notice}</p>}
     {!loading && runs.length === 0 && <p className="auto-discovery-status">No automatic search has reached this workspace yet. Check the discovery-scheduler container in Dokploy.</p>}
+    {runs.length > 0 && Date.now() - new Date(runs[0].startedAt).getTime() > 26 * 3600000 && <p className="field-error" role="alert">The scheduler has not reported a search in over 26 hours. Check the discovery-scheduler container in Dokploy.</p>}
     {runs.length > 0 && <p className="auto-discovery-status">Last attempt {new Date(runs[0].startedAt).toLocaleString()}. Latest searches: {sectors.map(sector => { const run = runs.find(item => item.sector === sector); return `${sector} ${run ? `${run.status.toLowerCase()} (${run.resultCount})` : 'pending'}`; }).join(' · ')}</p>}
     {sectors.flatMap(sector => { const run = runs.find(item => item.sector === sector); return run?.status === 'FAILED' ? [<p className="field-error" role="alert" key={run.id}>{sector}: {run.error || 'Search failed'} · {new Date(run.startedAt).toLocaleString()}</p>] : []; })}
     {!loading && candidates.length === 0 && <div className="empty"><RefreshCw size={24}/><h3>No leads awaiting review</h3><p>Check the latest search counts above or start a fresh search. Leads added to the CRM or dismissed no longer appear here.</p></div>}

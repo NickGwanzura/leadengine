@@ -4,6 +4,8 @@ import { db } from '@/lib/db';
 import { ApiError, apiError, requireMember, sameOrigin } from '@/lib/access';
 import { searchPublicBusinesses } from '@/lib/discovery-search';
 import { aiConfiguration } from '@/lib/ai-provider';
+import { companySchema, normalizeWebsite } from '@/lib/validation';
+import { createInitialCompanyScore } from '@/lib/score-service';
 
 const sectors = ['Industrial', 'FMCG', 'Logistics', 'Health', 'Tech', 'Real Estate'] as const;
 const sectorSchema = z.enum(sectors);
@@ -44,10 +46,11 @@ async function runSector(organizationId: string, sector: typeof sectors[number],
 export async function GET() {
   try {
     const member = await requireMember();
-    const [candidates, runs] = await Promise.all([
+    const [candidates, sectorRuns] = await Promise.all([
       db.discoveryCandidate.findMany({ where: { organizationId: member.organizationId, status: 'NEW' }, orderBy: { discoveredAt: 'desc' }, take: 100 }),
-      db.discoverySearchRun.findMany({ where: { organizationId: member.organizationId }, orderBy: { startedAt: 'desc' }, take: 12 }),
+      Promise.all(sectors.map(sector => db.discoverySearchRun.findFirst({ where: { organizationId: member.organizationId, sector }, orderBy: { startedAt: 'desc' } }))),
     ]);
+    const runs = sectorRuns.filter(run => run !== null).sort((a, b) => b.startedAt.getTime() - a.startedAt.getTime());
     const config = aiConfiguration();
     return Response.json({ candidates, runs, sectors, searchConfigured: config.configured && config.baseUrl?.origin === 'https://api.openai.com' });
   } catch (error) { return apiError(error); }
@@ -72,10 +75,28 @@ export async function PATCH(request: Request) {
   try {
     sameOrigin(request);
     const member = await requireMember(true);
-    const input = z.object({ id: z.string().min(1), status: z.enum(['DISMISSED', 'ADDED']) }).safeParse(await request.json());
+    const input = z.object({ id: z.string().min(1), status: z.enum(['DISMISSED', 'ADDED']), website: z.union([z.url().max(2048), z.literal('')]).optional() }).safeParse(await request.json());
     if (!input.success) throw new ApiError(400, 'Choose a candidate and review status');
-    const changed = await db.discoveryCandidate.updateMany({ where: { id: input.data.id, organizationId: member.organizationId, status: 'NEW' }, data: { status: input.data.status, reviewedAt: new Date() } });
-    if (!changed.count) throw new ApiError(404, 'Candidate not found in review queue');
-    return Response.json({ ok: true });
+    const result = await db.$transaction(async tx => {
+      const candidate = await tx.discoveryCandidate.findFirst({ where: { id: input.data.id, organizationId: member.organizationId, status: 'NEW' } });
+      if (!candidate) throw new ApiError(404, 'Candidate not found in review queue');
+      let companyId: string | undefined;
+      if (input.data.status === 'ADDED') {
+        const parsed = companySchema.safeParse({ name: candidate.name, website: input.data.website ?? candidate.website, industry: candidate.industry, city: candidate.city, country: 'Zimbabwe', source: 'Automatic public web discovery', notes: `Research source: ${candidate.sourceUrl}` });
+        if (!parsed.success) throw new ApiError(400, parsed.error.issues[0].message);
+        let website;
+        try { website = normalizeWebsite(parsed.data.website); } catch { throw new ApiError(400, 'Invalid public website URL'); }
+        const existing = await tx.prospectCompany.findFirst({ where: { organizationId: member.organizationId, OR: [{ name: { equals: parsed.data.name, mode: 'insensitive' } }, ...(website.domain ? [{ domain: website.domain }] : [])] }, select: { id: true } });
+        if (existing) throw new ApiError(409, 'This company is already in the CRM');
+        const company = await tx.prospectCompany.create({ data: { ...parsed.data, ...website, organizationId: member.organizationId } });
+        await createInitialCompanyScore(tx, company);
+        companyId = company.id;
+        await tx.auditLog.create({ data: { organizationId: member.organizationId, userId: member.userId, action: 'COMPANY_CREATED', entityId: company.id, detail: { discoveryCandidateId: candidate.id } } });
+      }
+      const changed = await tx.discoveryCandidate.updateMany({ where: { id: candidate.id, organizationId: member.organizationId, status: 'NEW' }, data: { status: input.data.status, reviewedAt: new Date() } });
+      if (!changed.count) throw new ApiError(409, 'Candidate was already reviewed');
+      return { ok: true, companyId };
+    });
+    return Response.json(result);
   } catch (error) { return apiError(error); }
 }
