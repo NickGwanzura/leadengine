@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { db } from '@/lib/db';
 import { ApiError, apiError, requireMember, sameOrigin } from '@/lib/access';
 import { searchPublicBusinesses } from '@/lib/discovery-search';
+import { aiConfiguration } from '@/lib/ai-provider';
 
 const sectors = ['Industrial', 'FMCG', 'Logistics', 'Health', 'Tech', 'Real Estate'] as const;
 const sectorSchema = z.enum(sectors);
@@ -13,18 +14,24 @@ function isInternal(request: Request) {
   return secret.length >= 32 && got.length === secret.length && timingSafeEqual(Buffer.from(secret), Buffer.from(got));
 }
 
-async function runSector(organizationId: string, sector: typeof sectors[number]) {
+async function runSector(organizationId: string, sector: typeof sectors[number], force = false) {
   const latest = await db.discoverySearchRun.findFirst({ where: { organizationId, sector }, orderBy: { startedAt: 'desc' } });
-  if (latest && ((latest.status === 'COMPLETED' && Date.now() - latest.startedAt.getTime() < 20 * 3600000) || (latest.status === 'RUNNING' && Date.now() - latest.startedAt.getTime() < 2 * 60000))) return { sector, skipped: true, discovered: latest.resultCount };
+  if (latest && ((!force && latest.status === 'COMPLETED' && Date.now() - latest.startedAt.getTime() < 20 * 3600000) || (latest.status === 'RUNNING' && Date.now() - latest.startedAt.getTime() < 2 * 60000))) return { sector, skipped: true, discovered: latest.resultCount };
   const run = await db.discoverySearchRun.create({ data: { organizationId, sector } });
   try {
-    const candidates = await searchPublicBusinesses({ industry: sector, location: 'Zimbabwe', limit: 3 });
-    const existing = await db.prospectCompany.findMany({ where: { organizationId }, select: { name: true, domain: true } });
+    const [existing, previouslyReviewed] = await Promise.all([
+      db.prospectCompany.findMany({ where: { organizationId }, select: { name: true, domain: true } }),
+      db.discoveryCandidate.findMany({ where: { organizationId }, select: { name: true, website: true }, orderBy: { discoveredAt: 'desc' }, take: 100 }),
+    ]);
+    const knownNames = new Set([...existing.map(company => company.name), ...previouslyReviewed.map(candidate => candidate.name)].map(name => name.trim().toLowerCase()));
+    const knownDomains = new Set([...existing.map(company => company.domain).filter((domain): domain is string => Boolean(domain)), ...previouslyReviewed.map(candidate => new URL(candidate.website).hostname.toLowerCase().replace(/^www\./, ''))]);
+    const excludedDomains = [...knownDomains].slice(0, 80);
+    const candidates = await searchPublicBusinesses({ industry: sector, location: 'Zimbabwe', limit: 6, excludedDomains });
     const filtered = candidates.filter(candidate => {
       const name = candidate.name.trim().toLowerCase();
       const domain = new URL(candidate.website).hostname.toLowerCase().replace(/^www\./, '');
-      return !existing.some(company => company.name.trim().toLowerCase() === name || company.domain === domain);
-    });
+      return !knownNames.has(name) && !knownDomains.has(domain);
+    }).slice(0, 3);
     const inserted = await db.discoveryCandidate.createMany({ data: filtered.map(candidate => ({ ...candidate, organizationId })), skipDuplicates: true });
     await db.discoverySearchRun.update({ where: { id: run.id }, data: { status: 'COMPLETED', resultCount: inserted.count, finishedAt: new Date() } });
     return { sector, skipped: false, discovered: inserted.count };
@@ -41,7 +48,8 @@ export async function GET() {
       db.discoveryCandidate.findMany({ where: { organizationId: member.organizationId, status: 'NEW' }, orderBy: { discoveredAt: 'desc' }, take: 100 }),
       db.discoverySearchRun.findMany({ where: { organizationId: member.organizationId }, orderBy: { startedAt: 'desc' }, take: 12 }),
     ]);
-    return Response.json({ candidates, runs, sectors });
+    const config = aiConfiguration();
+    return Response.json({ candidates, runs, sectors, searchConfigured: config.configured && config.baseUrl?.origin === 'https://api.openai.com' });
   } catch (error) { return apiError(error); }
 }
 
@@ -50,11 +58,12 @@ export async function POST(request: Request) {
     const internal = isInternal(request);
     if (!internal) sameOrigin(request);
     const member = internal ? null : await requireMember(true);
-    const input = z.object({ sector: sectorSchema }).safeParse(await request.json());
+    const input = z.object({ sector: sectorSchema, force: z.boolean().optional() }).safeParse(await request.json());
     if (!input.success) throw new ApiError(400, 'Choose a configured target sector');
     const organizations = member ? [member.organizationId] : (await db.organization.findMany({ where: { id: 'spiritus' }, select: { id: true } })).map(item => item.id);
+    if (!organizations.length) throw new ApiError(503, 'The Spiritus workspace has not been initialized. Run the seed step before automatic discovery.');
     const results = [];
-    for (const organizationId of organizations) results.push(await runSector(organizationId, input.data.sector));
+    for (const organizationId of organizations) results.push(await runSector(organizationId, input.data.sector, Boolean(member && input.data.force)));
     return Response.json({ results });
   } catch (error) { return apiError(error); }
 }
