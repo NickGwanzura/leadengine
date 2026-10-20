@@ -1,9 +1,9 @@
-const sectors = ['Industrial', 'FMCG', 'Logistics', 'Health', 'Tech', 'Real Estate'];
 const base = process.env.APP_INTERNAL_URL || 'http://app:3000';
 const secret = process.env.INTERNAL_API_SECRET;
 if (!secret || secret.length < 32) throw new Error('INTERNAL_API_SECRET is required');
-const day = 24 * 60 * 60 * 1000;
-const retryDelay = 15 * 60 * 1000;
+// Each tick asks the app to run the most overdue search target, so leads arrive around the clock
+// instead of in one daily burst. DISCOVERY_REFRESH_HOURS (app side) controls how often each target repeats.
+const tickMs = Math.max(1, Number(process.env.DISCOVERY_INTERVAL_MINUTES) || 10) * 60 * 1000;
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 
 async function waitForApp() {
@@ -22,33 +22,27 @@ async function waitForApp() {
   }
 }
 
-async function cycle() {
-  let failures = 0;
-  for (const sector of sectors) {
-    try {
-      const response = await fetch(`${base}/api/discovery/auto`, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json', authorization: `Bearer ${secret}` },
-        body: JSON.stringify({ sector }),
-        signal: AbortSignal.timeout(75_000),
-      });
-      const result = await response.json();
-      if (!response.ok) throw new Error(result.error || `HTTP ${response.status}`);
-      console.log(JSON.stringify({ sector, result: result.results }));
-    } catch (error) {
-      failures++;
-      console.error(JSON.stringify({ sector, error: error instanceof Error ? error.message : 'Search failed' }));
-    }
-    await sleep(1500);
+async function tick() {
+  try {
+    const response = await fetch(`${base}/api/discovery/auto`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', authorization: `Bearer ${secret}` },
+      body: JSON.stringify({ next: true }),
+      signal: AbortSignal.timeout(150_000),
+    });
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error || `HTTP ${response.status}`);
+    // Only log ticks that searched or failed; idle ticks are the normal state between due targets.
+    const active = (result.results || []).filter(item => !item.idle && !item.paused);
+    if (active.length) console.log(JSON.stringify({ service: 'discovery-scheduler', at: new Date().toISOString(), results: active }));
+  } catch (error) {
+    console.error(JSON.stringify({ service: 'discovery-scheduler', error: error instanceof Error ? error.message : 'Search failed' }));
   }
-  return failures;
 }
 
+console.log(JSON.stringify({ service: 'discovery-scheduler', event: 'started', tickMinutes: tickMs / 60000 }));
 while (true) {
   await waitForApp();
-  console.log(JSON.stringify({ service: 'discovery-scheduler', event: 'cycle-started', at: new Date().toISOString() }));
-  const failures = await cycle();
-  const delay = failures ? retryDelay : day;
-  console.log(JSON.stringify({ cycleComplete: true, failures, nextRunAt: new Date(Date.now() + delay).toISOString() }));
-  await sleep(delay);
+  await tick();
+  await sleep(tickMs);
 }

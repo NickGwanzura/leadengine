@@ -1,12 +1,12 @@
 import { db } from '@/lib/db';
 import { z } from 'zod';
-import { normalizeWebsite, stages } from '@/lib/validation';
+import { normalizeWebsite, stages, websiteField } from '@/lib/validation';
 import { apiError,requireMember,sameOrigin,ApiError } from '@/lib/access';
 import { recalculateCompanyScore } from '@/lib/score-service';
 import { scoreProspect } from '@/lib/scoring';
 const update=z.object({
  name:z.string().trim().min(2).max(200).optional(),
- website:z.union([z.url().max(2048),z.literal('')]).optional(),
+ website:websiteField,
  industry:z.string().trim().max(100).optional(),
  city:z.string().trim().max(100).optional(),
  country:z.string().trim().max(100).optional(),

@@ -18,6 +18,7 @@ model Organization {
  proposals Proposal[]
  discoveryCandidates DiscoveryCandidate[]
  discoveryRuns DiscoverySearchRun[]
+ businessProfile BusinessProfile?
  outreachSends OutreachSend[]
  emailSuppressions EmailSuppression[]
  createdAt DateTime @default(now())
@@ -97,6 +98,8 @@ model DiscoveryCandidate {
  industry String
  city String
  status String @default("NEW")
+ segment String @default("")
+ fitReason String @default("")
  discoveredAt DateTime @default(now())
  reviewedAt DateTime?
  @@unique([organizationId,website])
@@ -361,4 +364,20 @@ model ProposalLineItem {
  unitPrice Decimal @db.Decimal(14,2)
  sortOrder Int
  @@index([proposalId,sortOrder])
+}
+model BusinessProfile {
+ id String @id @default(cuid())
+ organizationId String @unique
+ organization Organization @relation(fields:[organizationId],references:[id],onDelete:Cascade)
+ website String
+ summary String @default("")
+ services Json @default("[]")
+ segments Json @default("[]")
+ pages Json @default("[]")
+ status String @default("ANALYSING")
+ error String?
+ active Boolean @default(true)
+ analysedAt DateTime?
+ createdAt DateTime @default(now())
+ updatedAt DateTime @updatedAt
 }

@@ -57,7 +57,7 @@ export function DiscoveryPanel({ existingDomains, existingNames, onAdded }: Prop
   async function add(candidate: DiscoveryCandidate, key: string, website: string) {
     setSaving(key); setError('');
     try {
-      const response = await fetch('/api/companies', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name: candidate.name, website, industry: candidate.industry || industry, city: candidate.city, country: location.includes(',') ? location.split(',').at(-1)?.trim() : 'Unspecified', source: 'Public web search', notes: `Research source: ${candidate.sourceUrl}` }) });
+      const response = await fetch('/api/companies', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name: candidate.name, website, industry: candidate.industry || industry, city: candidate.city, country: location.includes(',') ? location.split(',').at(-1)?.trim() : 'Unspecified', source: 'Public web search', notes: [`Research source: ${candidate.sourceUrl}`, candidate.fitReason && `Why they may fit: ${candidate.fitReason}`].filter(Boolean).join('\n') }) });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || 'Could not add company');
       setSaved(previous => [...previous, key]);
@@ -92,6 +92,7 @@ export function DiscoveryPanel({ existingDomains, existingNames, onAdded }: Prop
         return <article className="rounded-lg border border-[var(--line)] p-4" key={key}>
           <div className="flex items-start justify-between gap-3"><div className="flex items-center gap-2"><Building2 size={18}/><div><h3 className="text-sm font-semibold">{candidate.name}</h3><p className="text-xs text-[var(--muted)]">{[candidate.industry, candidate.city].filter(Boolean).join(' · ')}</p></div></div><Badge variant="outline">Source checked</Badge></div>
           <p className="mt-3 text-sm text-[var(--muted)]">{candidate.description}</p>
+          {candidate.fitReason && <p className="mt-2 rounded-md bg-[var(--accent)]/5 px-3 py-2 text-sm"><strong className="font-medium">Why they may fit: </strong>{candidate.fitReason}</p>}
           <div className="mt-3 flex gap-4 text-sm text-[var(--accent)]"><a className="inline-flex items-center gap-1" href={candidate.website} target="_blank" rel="noreferrer">Suggested page <ArrowUpRight size={13}/></a><a className="inline-flex items-center gap-1" href={candidate.sourceUrl} target="_blank" rel="noreferrer">Source <ArrowUpRight size={13}/></a></div>
           <label className="mt-4 grid gap-2 text-xs text-[var(--muted)]">Verified business website<Input type="url" value={website} onChange={event => { setWebsites(previous => ({ ...previous, [key]: event.target.value })); setVerified(previous => previous.filter(value => value !== key)); }} placeholder="Leave blank if only a directory listing is known"/></label>
           <label className="mt-3 flex items-start gap-2 text-xs text-[var(--muted)]"><input type="checkbox" checked={verified.includes(key)} onChange={event => setVerified(previous => event.target.checked ? [...previous, key] : previous.filter(value => value !== key))}/><span>I reviewed this candidate and its website field.</span></label>

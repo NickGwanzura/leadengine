@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { parseDiscoveryResponse } from '../lib/discovery';
 
-const candidate = (sourceUrl: string) => ({ name: 'Example Studio', website: 'https://example.com', sourceUrl, description: 'Public website', industry: 'Design', city: 'Harare' });
+const candidate = (sourceUrl: string) => ({ name: 'Example Studio', website: 'https://example.com', sourceUrl, description: 'Public website', industry: 'Design', city: 'Harare', fitReason: '' });
 
 describe('public lead discovery sources', () => {
   it('only returns candidates backed by an actual web search source', () => {

@@ -26,7 +26,7 @@ export function publicAiStatus() {
   return { configured: config.configured, provider: config.provider, model: config.model, destination: config.destination ?? null };
 }
 
-export async function generateChatText(messages: AiMessage[], fetcher: typeof fetch = fetch) {
+export async function generateChatText(messages: AiMessage[], fetcher: typeof fetch = fetch, timeoutMs = 30_000) {
   const config = aiConfiguration();
   if (!config.configured) throw new Error('AI_NOT_CONFIGURED');
   const endpoint = new URL('chat/completions', config.baseUrl!.toString().replace(/\/$/, '') + '/');
@@ -35,7 +35,7 @@ export async function generateChatText(messages: AiMessage[], fetcher: typeof fe
     response = await fetcher(endpoint, {
       method: 'POST',
       cache: 'no-store',
-      signal: AbortSignal.timeout(30_000),
+      signal: AbortSignal.timeout(timeoutMs),
       headers: { authorization: `Bearer ${config.apiKey}`, 'content-type': 'application/json' },
       body: JSON.stringify({ model: config.model, messages, response_format: { type: 'json_object' }, store: false }),
     });

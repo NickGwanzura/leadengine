@@ -7,6 +7,7 @@ const candidateSchema = z.object({
   description: z.string().trim().max(500),
   industry: z.string().trim().max(100),
   city: z.string().trim().max(100),
+  fitReason: z.string().trim().max(400).catch(''),
 });
 
 export type DiscoveryCandidate = z.infer<typeof candidateSchema>;
@@ -85,6 +86,7 @@ export function parseDiscoveryResponse(raw: unknown, limit: number): DiscoveryCa
       description: raw.description ?? '',
       industry: raw.industry ?? '',
       city: raw.city ?? '',
+      fitReason: raw.fitReason ?? raw.fit_reason ?? '',
     });
     if (!candidate.success) return [];
     const source = citationKey(candidate.data.sourceUrl);
