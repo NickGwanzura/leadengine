@@ -2,9 +2,23 @@
 
 Run `npm ci`, `npm run db:generate`, `npm run typecheck`, `npm run lint`, `npm test`, and `npm run build`. Worker source can be syntax checked with `PYTHONPYCACHEPREFIX=/tmp/leados-pycache python3 -m compileall -q worker`; install `worker/requirements.txt` and run `pytest worker/tests` for security and evidence classification tests.
 
+`tests/crawl-lifecycle.test.ts` drives the worker protocol through `POST /api/internal/jobs` with an in-memory Prisma double: claim and lease, progress, retryable and permanent failures, evidence host rejection, contact enrichment and rescoring. `worker/tests/test_crawl_policy.py` starts a real loopback fixture website and covers robots refusal (missing, disallowed, unavailable), redirect refusal without following, restricted and non-HTML responses, the page size cap and full retrieval of a page just under that cap.
+
 For an end-to-end smoke test on a Docker host: build and start Compose, run the seed profile, sign in, create a company with a controlled public website, approve the crawl, watch QUEUED → RUNNING → COMPLETED, inspect source URLs and audit classifications, cancel a queued job, import a small CSV and roll it back before editing the imported records. Inspect the worker and app logs for blocked private addresses and redirects.
 
 Tests do not prove compliance with any particular website's terms. A human must review the target's terms and approve each crawl. No real prospect records are included in test fixtures.
+
+## Crawl lifecycle validation (19 October 2026)
+
+- Vitest: 43 passed, including the 9 crawl lifecycle tests. TypeScript type checking, ESLint and `python3 -m compileall worker` passed.
+- Python worker: 31 passed, including 10 fixture-site policy tests. `crawl4ai` was not installed for this run, so browser extraction and the Docker smoke test were not exercised.
+- `npm run build` was not run for this change; it does not cover the worker or the test suites.
+
+## Company list polling validation (19 October 2026)
+
+- `tests/company-list.test.ts` covers the summary projection (no audit or timeline relations requested), the drawer detail route, organization scoping, 401 for signed-out callers, `ETag` → `304` for unchanged polls and a fresh payload when job progress changes.
+- Vitest: 51 passed. TypeScript type checking, ESLint, `python3 -m compileall worker` and `npm run build` passed.
+- The browser-side behaviour (8-second polling while a job is active, 60 seconds otherwise, drawer detail load) was compiled but not exercised against a live PostgreSQL/Redis stack in this run.
 
 ## Latest validation (17 October 2026)
 
