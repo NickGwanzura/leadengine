@@ -10,6 +10,13 @@ All browser write routes require an Auth.js session, organization membership and
 | `/api/companies/import` | POST | Import mapped JSON rows after client CSV/XLSX preview; maximum 500 rows |
 | `/api/companies/import` | DELETE | Roll back a batch only if its companies have no subsequent changes |
 | `/api/discovery` | POST | Search public web for source-checked candidate companies; review before CRM import |
+| `/api/today` | GET | Who to contact now: due follow-ups, best uncontacted leads by score, and open deals with no contact for 14+ days; each with contact routes and the first observed website gap as an opener |
+| `/api/companies/[id]/outcome` | POST | Log a contact result `{ outcome, channel }` (NO_ANSWER, INTERESTED, MEETING_BOOKED, NOT_NOW, WRONG_PERSON, NOT_INTERESTED via WHATSAPP, CALL, EMAIL, VISIT); moves the stage forward, closes open follow-ups and schedules the next touch (no answer: +3, +4, +7, +16 days, then a 90-day check-back) |
+| `/api/scorecard` | GET/PATCH | Weekly contacts, replies, meetings and wins (from logged outcomes and stage changes to WON), reply rate by channel, per-target-group conversion with the current search interval; PATCH sets `weeklyTouchTarget` |
+| `/api/settings/morning-brief` | GET/PATCH | The signed-in member's opt-in for a 07:30 Harare-time email of the Today list (needs Resend configured) |
+| `/api/internal/morning-brief` | POST | Scheduler tick (internal bearer): sends due briefs, at most once per member per Harare day |
+| `/api/settings/auto-audit` | GET/PATCH | Show or switch automatic website audits; turning them on requires `authorized: true` and records the member as approver of each automatic crawl |
+| `/api/internal/auto-audit` | POST | Scheduler tick (internal bearer): queues up to five audits per workspace for never-audited companies with websites |
 | `/api/discovery/profile` | GET/POST/PATCH | Read the lead engine profile, analyse the business website into services and target segments, or pause/resume searching and edit segments |
 | `/api/discovery/auto` | GET/POST/PATCH | Review saved candidates, run one target search, or dismiss/mark reviewed; the scheduler sends `{ "next": true }` with the internal bearer secret |
 | `/api/packages` | GET/PATCH | Read and update organization package prices; updates require ADMIN |
