@@ -3,6 +3,7 @@ import type { Prisma } from '@prisma/client';
 import { db } from '@/lib/db';
 import { apiError,requireMember,sameOrigin } from '@/lib/access';
 import { companySchema,normalizeWebsite } from '@/lib/validation';
+import { queueAutomaticAudits } from '@/lib/crawl-queue';
 import { createInitialCompanyScore } from '@/lib/score-service';
 import { scoreProspect } from '@/lib/scoring';
 
@@ -49,6 +50,8 @@ export async function POST(request:Request){
    await tx.auditLog.create({data:{organizationId:m.organizationId,userId:m.userId,action:'COMPANY_CREATED',entityId:c.id,detail:{}}});
    return c;
   });
+  // Auto-audit (when switched on) starts research immediately; failure never blocks creating the company.
+  if(company.website)await queueAutomaticAudits(m.organizationId,1,[company.id]).catch(()=>undefined);
   return Response.json(company,{status:201});
  }catch(e){return apiError(e);}
 }

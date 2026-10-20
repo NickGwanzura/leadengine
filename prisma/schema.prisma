@@ -19,6 +19,9 @@ model Organization {
  discoveryCandidates DiscoveryCandidate[]
  discoveryRuns DiscoverySearchRun[]
  businessProfile BusinessProfile?
+ autoAuditBy String?
+ autoAuditAt DateTime?
+ weeklyTouchTarget Int @default(25)
  outreachSends OutreachSend[]
  emailSuppressions EmailSuppression[]
  createdAt DateTime @default(now())
@@ -40,6 +43,8 @@ model OrganizationMember {
  organizationId String
  userId String
  role String @default("MEMBER")
+ morningBrief Boolean @default(false)
+ briefSentOn String?
  organization Organization @relation(fields:[organizationId],references:[id])
  user User @relation(fields:[userId],references:[id])
  @@unique([organizationId,userId])
@@ -63,6 +68,7 @@ model ProspectCompany {
  sizeEstimate String?
  notes String @default("")
  source String @default("Manual")
+ segment String @default("")
  stage String @default("NEW LEAD")
  priority String @default("Normal")
  assignedProduct String?
@@ -100,10 +106,13 @@ model DiscoveryCandidate {
  status String @default("NEW")
  segment String @default("")
  fitReason String @default("")
+ rank Int @default(0)
+ signals Json @default("[]")
  discoveredAt DateTime @default(now())
  reviewedAt DateTime?
  @@unique([organizationId,website])
  @@index([organizationId,status,discoveredAt])
+ @@index([organizationId,status,rank])
 }
 model DiscoverySearchRun {
  id String @id @default(cuid())
@@ -315,6 +324,7 @@ model AuditLog {
  detail Json
  createdAt DateTime @default(now())
  @@index([organizationId,createdAt])
+ @@index([organizationId,action,createdAt])
 }
 model ProductPackage {
  id String @id @default(cuid())

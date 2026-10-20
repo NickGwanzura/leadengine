@@ -89,7 +89,7 @@ export function LeadEnginePanel({ onPlanChanged }: { onPlanChanged: () => void }
           {profile.status === 'FAILED' && profile.error && <p className="text-sm text-red-700">Last analysis failed: {profile.error}{profile.segments.length ? ' Your previous targets are still being searched.' : ''}</p>}
           {profile.summary && <p className="text-sm leading-relaxed">{profile.summary}</p>}
           {profile.services.length > 0 && <div className="flex flex-wrap gap-1.5">{profile.services.map(service => <Badge key={service.name} variant="outline" title={service.description}>{service.name}</Badge>)}</div>}
-          {profile.pages.length > 0 && <details className="text-xs text-[var(--muted)]"><summary className="cursor-pointer">{profile.pages.length} pages analysed</summary><div className="mt-2 grid gap-1">{profile.pages.map(page => <a key={page.url} className="inline-flex items-center gap-1 text-[var(--accent)]" href={page.url} target="_blank" rel="noreferrer">{page.title || page.url}<ExternalLink size={11}/></a>)}</div></details>}
+          {profile.pages.length > 0 && <details className="text-xs text-[var(--muted)]"><summary className="cursor-pointer">{profile.pages.length} page{profile.pages.length === 1 ? '' : 's'} analysed</summary><div className="mt-2 grid gap-1">{profile.pages.map(page => <a key={page.url} className="inline-flex items-center gap-1 text-[var(--accent)]" href={page.url} target="_blank" rel="noreferrer">{page.title || page.url}<ExternalLink size={11}/></a>)}</div></details>}
           {analyseForm}
         </div>
 

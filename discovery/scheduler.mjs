@@ -22,6 +22,29 @@ async function waitForApp() {
   }
 }
 
+async function autoAudit() {
+  try {
+    const response = await fetch(`${base}/api/internal/auto-audit`, { method: 'POST', headers: { authorization: `Bearer ${secret}` }, signal: AbortSignal.timeout(60_000) });
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error || `HTTP ${response.status}`);
+    const queued = (result.results || []).reduce((sum, item) => sum + (item.queued || 0), 0);
+    if (queued) console.log(JSON.stringify({ service: 'auto-audit', at: new Date().toISOString(), queued }));
+  } catch (error) {
+    console.error(JSON.stringify({ service: 'auto-audit', error: error instanceof Error ? error.message : 'Queueing failed' }));
+  }
+}
+
+async function morningBrief() {
+  try {
+    const response = await fetch(`${base}/api/internal/morning-brief`, { method: 'POST', headers: { authorization: `Bearer ${secret}` }, signal: AbortSignal.timeout(120_000) });
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error || `HTTP ${response.status}`);
+    if (result.sent) console.log(JSON.stringify({ service: 'morning-brief', at: new Date().toISOString(), sent: result.sent }));
+  } catch (error) {
+    console.error(JSON.stringify({ service: 'morning-brief', error: error instanceof Error ? error.message : 'Brief failed' }));
+  }
+}
+
 async function tick() {
   try {
     const response = await fetch(`${base}/api/discovery/auto`, {
@@ -44,5 +67,7 @@ console.log(JSON.stringify({ service: 'discovery-scheduler', event: 'started', t
 while (true) {
   await waitForApp();
   await tick();
+  await autoAudit();
+  await morningBrief();
   await sleep(tickMs);
 }

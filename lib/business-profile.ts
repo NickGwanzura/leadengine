@@ -25,12 +25,12 @@ export const maxSegments = 8;
 export const refreshHours = Math.max(1, Number(process.env.DISCOVERY_REFRESH_HOURS) || 6);
 export const staleRunMs = 2 * 60000;
 const failedRetryMs = 15 * 60000;
-export function isDue(run: { status: string; startedAt: Date } | undefined, now = Date.now()) {
+export function isDue(run: { status: string; startedAt: Date } | undefined, now = Date.now(), hours = refreshHours) {
   if (!run) return true;
   const age = now - run.startedAt.getTime();
   if (run.status === 'RUNNING') return age > staleRunMs;
   if (run.status === 'FAILED') return age > failedRetryMs;
-  return age > refreshHours * 3600000;
+  return age > hours * 3600000;
 }
 
 const pageLimit = 5;
@@ -65,7 +65,7 @@ export function profileLinks(html: string, base: URL) {
 }
 
 // Every hop is re-checked so a redirect cannot reach a private address.
-async function fetchPublicHtml(raw: string) {
+export async function fetchPublicHtml(raw: string) {
   let target = raw;
   for (let hop = 0; hop < 4; hop++) {
     const { website } = await validatePublicUrl(target);
